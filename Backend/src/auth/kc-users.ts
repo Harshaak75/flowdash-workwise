@@ -1,4 +1,4 @@
-import axios from "../../../Frontend/node_modules/axios";
+import axios from "axios";
 import { getProvisionerToken } from "./kc-admin";
 
 const base = process.env.KEYCLOAK_BASE_URL!;
