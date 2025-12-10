@@ -65,6 +65,8 @@ interface Task {
   updatedAt: string;
   assignedHours?: string;
   comments?: Comment[];
+  fileUrl_manager?: string;
+  fileUrl_operator?: string;
 }
 
 const COLOR_PRIMARY = "#0000cc"; // Deep Blue
@@ -278,10 +280,10 @@ const TaskTimelineView = ({ role }: { role: any }) => {
       if (err.response?.status === 409) {
         const running = err.response.data.runningTask;
         toast({
-        title: "Error",
-        description: `Please pause current task before starting another.\nRunning task: ${running.title}`,
-        variant: "destructive",
-      });
+          title: "Error",
+          description: `Please pause current task before starting another.\nRunning task: ${running.title}`,
+          variant: "destructive",
+        });
       } else {
         console.error("Failed to update status", err);
       }
@@ -501,9 +503,9 @@ const TaskTimelineView = ({ role }: { role: any }) => {
               <div className="flex items-center justify-between w-full lg:contents order-5 lg:order-none border-t border-gray-100 pt-2 lg:border-t-0 lg:pt-0">
                 {/* Manager Files - FIX: Stop propagation on anchor tag clicks */}
                 <div className="flex justify-center items-center lg:w-auto w-1/3">
-                  {task.managerFiles?.length ? (
+                  {task.fileUrl_manager ? (
                     <a
-                      href={task.managerFiles[0]}
+                      href={task.fileUrl_manager}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
