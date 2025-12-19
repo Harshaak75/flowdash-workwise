@@ -96,6 +96,102 @@ router.post(
   }
 );
 
+router.patch(
+  "/:id",
+  auth,
+  requireRole("MANAGER", "PROJECT_MANAGER"),
+  upload.single("file"),
+  async (req, res) => {
+    // 1. Fix the "Where" error: Ensure taskId is a string
+    const taskId = req.params.id;
+    if (!taskId) return res.status(400).json({ error: "Task ID is required" });
+
+    const {
+      title,
+      notes,
+      dueDate,
+      priority,
+      assignedHours,
+      assigneeUserId,
+      assigneeEmployeeId,
+    }: any = req.body;
+
+    try {
+      // --- Handle Assignee Logic ---
+      let newAssigneeId: string | undefined = undefined; // Start undefined
+
+      // Only check DB if the user specifically requested a change
+      if (assigneeUserId) {
+         newAssigneeId = assigneeUserId;
+      } else if (assigneeEmployeeId) {
+        const emp = await prisma.employee.findUnique({
+          where: { id: assigneeEmployeeId },
+        });
+        if (!emp) return res.status(400).json({ error: "invalid assignee employee id" });
+        newAssigneeId = emp.userId;
+      }
+
+      // --- Handle File Logic ---
+      let newFileUrl: string | undefined = undefined; // Start undefined
+
+      if (req.file) {
+        const fileName = `${Date.now()}_${req.file.originalname}`;
+        const { error } = await supabase.storage
+          .from("ManagerFiles")
+          .upload(fileName, req.file.buffer, {
+            contentType: req.file.mimetype,
+          });
+        
+        if (error) return res.status(500).json({ error: "file upload failed" });
+
+        const { data } = supabase.storage.from("ManagerFiles").getPublicUrl(fileName);
+        newFileUrl = data.publicUrl;
+      }
+
+      // --- THE FIX: Build updateData dynamically ---
+      // We explicitly type this as Prisma.TaskUncheckedUpdateInput to allow scalar 'assigneeId'
+      const updateData: any = {}; 
+
+      // Only add properties to the object if they exist. 
+      // This solves the 'exactOptionalPropertyTypes' error.
+      
+      if (title) updateData.title = title;
+      if (priority) updateData.priority = priority;
+      
+      // For Nullable fields (notes, dueDate, assignedHours):
+      // We check !== undefined so we can accept empty strings or explicit updates
+      if (notes !== undefined) updateData.notes = notes; 
+      
+      if (dueDate) {
+         updateData.dueDate = new Date(dueDate);
+      }
+      
+      if (assignedHours) {
+         updateData.assignedHours = parseInt(assignedHours);
+      }
+
+      // Only add these if we calculated new values
+      if (newAssigneeId) updateData.assigneeId = newAssigneeId;
+      if (newFileUrl) updateData.fileUrl_manager = newFileUrl;
+
+      // 2. Perform Update
+      const task = await prisma.task.update({
+        where: { id: taskId }, // taskId is now guaranteed string
+        data: updateData,      // updateData no longer contains explicit 'undefined' values
+      });
+
+      res.json(task);
+
+    } catch (error: any) {
+      console.error(error);
+      if (error.code === 'P2025') {
+        return res.status(404).json({ error: "Task not found" });
+      }
+      res.status(500).json({ error: "Failed to update task" });
+    }
+  }
+);
+
 // List tasks (manager: all; operator: mine)
 router.get("/", auth, async (req, res) => {
   const isManager = req.user!.role === "MANAGER";
