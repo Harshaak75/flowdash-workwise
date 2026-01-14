@@ -17,6 +17,13 @@ const router = Router();
 
 // GET all employees (manager)
 
+
+const getTodayDate = () => {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return now;
+};
+
 // Get employees assigned to the logged-in manager
 router.get(
   "/employees",
@@ -662,6 +669,197 @@ router.get(
   }
 );
 
-// operator
+// Attandance
+
+router.post("/attendance/break/start", auth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const today = getTodayDate();
+
+    if (!userId) {
+      return res.status(500).json({ error: "User not found" });
+    }
+
+    const attendance = await prisma.userAttendance.findUnique({
+      where: {
+        userId_workDate: { userId, workDate: today },
+      },
+    });
+
+    if (!attendance)
+      return res.status(400).json({ error: "Attendance not found" });
+
+    if (attendance.breakStartTime && !attendance.breakEndTime) {
+      return res.status(400).json({ error: "Break already active" });
+    }
+
+    const now = new Date();
+
+    // Create break log
+    await prisma.breakLog.create({
+      data: {
+        attendanceId: attendance.id,
+        breakStart: now,
+      },
+    });
+
+    // Update attendance
+    await prisma.userAttendance.update({
+      where: { id: attendance.id },
+      data: {
+        breakStartTime: now,
+        breakEndTime: null,
+      },
+    });
+
+    res.json({ message: "Break started", breakStartTime: now });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to start break" });
+  }
+});
+
+
+router.post("/attendance/break/end", auth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const today = getTodayDate();
+
+
+    if (!userId) {
+      return res.status(500).json({ error: "User not found" });
+    }
+
+    const attendance = await prisma.userAttendance.findUnique({
+      where: {
+        userId_workDate: { userId, workDate: today },
+      },
+      include: { breakLogs: true },
+    });
+
+    if (!attendance)
+      return res.status(400).json({ error: "Attendance not found" });
+
+    if (!attendance.breakStartTime) {
+      return res.status(400).json({ error: "No active break" });
+    }
+
+    const now = new Date();
+
+    // Find last open break
+    const openBreak = attendance.breakLogs
+      .filter(b => !b.breakEnd)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+
+    if (!openBreak)
+      return res.status(400).json({ error: "No open break found" });
+
+    const breakMinutes = Math.ceil(
+      (now.getTime() - openBreak.breakStart.getTime()) / 60000
+    );
+
+    // Close break log
+    await prisma.breakLog.update({
+      where: { id: openBreak.id },
+      data: { breakEnd: now },
+    });
+
+    // Update attendance
+    await prisma.userAttendance.update({
+      where: { id: attendance.id },
+      data: {
+        breakEndTime: now,
+        breakStartTime: null,
+        totalBreakMinutes: attendance.totalBreakMinutes + breakMinutes,
+      },
+    });
+
+    res.json({
+      message: "Break ended",
+      breakMinutes,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to end break" });
+  }
+});
+
+// GET current attendance status
+router.get("/employees/attendance/current", auth, async (req, res) => {
+  const userId = req.user?.id;
+
+  if(!userId){
+    return res.status(400).json({ error: "User not found" });
+  }
+
+  // Today (00:00)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const attendance = await prisma.userAttendance.findUnique({
+    where: {
+      userId_workDate: {
+        userId,
+        workDate: today,
+      },
+    },
+  });
+
+  if (!attendance) {
+    return res.json({
+      isOnBreak: false,
+      loginTime: null,
+      breakStartTime: null,
+    });
+  }
+
+  res.json({
+    isOnBreak: !!attendance.breakStartTime && !attendance.breakEndTime,
+    loginTime: attendance.loginTime,
+    breakStartTime: attendance.breakStartTime,
+  });
+});
+
+
+
+router.get("/attendance/today", auth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (!userId) {
+      return res.status(400).json({ error: "User not found" });
+    }
+
+    const attendance = await prisma.userAttendance.findUnique({
+      where: {
+        userId_workDate: {
+          userId,
+          workDate: today,
+        },
+      },
+    });
+
+    if (!attendance) {
+      return res.json({ onBreak: false });
+    }
+
+    const onBreak =
+      attendance.breakStartTime !== null &&
+      attendance.breakEndTime === null;
+
+    return res.json({
+      onBreak,
+      breakStartTime: attendance.breakStartTime,
+      loginTime: attendance.loginTime,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch attendance" });
+  }
+});
+
+
 
 export default router;

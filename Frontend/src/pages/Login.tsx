@@ -19,7 +19,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { setUser } = useAuth();
+  const { setUser, setLoginTime } = useAuth();
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -63,11 +63,16 @@ export default function Login() {
         description: `Welcome back, ${data.email}!`,
       });
 
+      const loginTime = new Date();
+
       setUser({
       id: data.userId,
       email: data.email,
       role: data.role.toLowerCase(),
     });
+    setLoginTime(loginTime);
+
+    
 
       // Redirect to dashboard
       navigate(`/${data.role.toLowerCase()}`);

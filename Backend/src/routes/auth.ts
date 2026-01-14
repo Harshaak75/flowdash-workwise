@@ -8,6 +8,12 @@ import { auth } from "../middleware/auth";
 
 const router = Router();
 
+const getTodayDate = () => {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return now;
+};
+
 router.post("/register", async (req, res) => {
   try {
     const { email, password, role, name, roleTitle, department } = req.body;
@@ -117,6 +123,8 @@ router.post("/login", async (req, res) => {
       },
     });
 
+
+
     // 5️⃣ Return your app’s own JWT for frontend
     const appToken = jwt.sign(
       { id: user.id, role: user.role, email: user.email },
@@ -137,6 +145,30 @@ router.post("/login", async (req, res) => {
       sameSite: "none", // ✅ allows cookies for cross-site GETs
       maxAge: kc.refresh_expires_in * 1000, // ~30 mins
     });
+
+
+    const today = getTodayDate();
+
+    const attendance = await prisma.userAttendance.upsert({
+      where: {
+        userId_workDate: {
+          userId: user.id,
+          workDate: today,
+        },
+      },
+      update: {
+        // Do NOT overwrite loginTime if already exists
+        isActiveSession: true,
+      },
+      create: {
+        userId: user.id,
+        workDate: today,
+        loginTime: new Date(),
+        isActiveSession: true,
+      },
+    });
+
+    console.log("✅ Attendance started:", attendance.id);
 
     res.json({
       token: appToken, // your app token (frontend uses this)
@@ -189,6 +221,73 @@ router.post("/logout", async (req, res) => {
       sameSite: "none",
     });
 
+    const today = getTodayDate();
+    const now = new Date();
+
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(500).json({ error: "User not found" });
+    }
+
+    /* ---------------- ATTENDANCE LOGOUT ---------------- */
+
+    const attendance = await prisma.userAttendance.findUnique({
+      where: {
+        userId_workDate: {
+          userId,
+          workDate: today,
+        },
+      },
+      include: {
+        breakLogs: true,
+      },
+    });
+
+    if (attendance && attendance.isActiveSession) {
+      let totalBreakMinutes = attendance.totalBreakMinutes;
+
+      // 🔴 Edge case: user logs out during a break
+      const openBreak = attendance.breakLogs
+        .filter(b => !b.breakEnd)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+
+      if (openBreak) {
+        const breakMinutes = Math.ceil(
+          (now.getTime() - openBreak.breakStart.getTime()) / 60000
+        );
+
+        await prisma.breakLog.update({
+          where: { id: openBreak.id },
+          data: { breakEnd: now },
+        });
+
+        totalBreakMinutes += breakMinutes;
+      }
+
+      const totalWorkedMinutes = Math.max(
+        Math.floor(
+          (now.getTime() - attendance.loginTime.getTime()) / 60000
+        ) - totalBreakMinutes,
+        0
+      );
+
+      await prisma.userAttendance.update({
+        where: { id: attendance.id },
+        data: {
+          logoutTime: now,
+          totalBreakMinutes,
+          totalWorkingMinutes: totalWorkedMinutes,
+          isActiveSession: false,
+          breakStartTime: null,
+          breakEndTime: null,
+        },
+      });
+
+      console.log("✅ Attendance closed:", attendance.id);
+    }
+
+
     return res.json({ message: "Logged out successfully" });
   } catch (err: any) {
     console.error("Logout Error:", err.response?.data || err.message);
@@ -230,7 +329,7 @@ router.get("/me", auth, async (req, res) => {
       email: user.email,
       role: user.role,
     });
-  } catch (error) {}
+  } catch (error) { }
 });
 
 router.get("/go-to-hrm", ensureFreshKeycloakToken, async (req, res) => {

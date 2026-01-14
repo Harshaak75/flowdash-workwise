@@ -51,6 +51,7 @@ model User {
 
   ExternalIdentity ExternalIdentity[]
   taskWorkLogs     TaskWorkLog[]
+  attendances      UserAttendance[] @relation("UserAttendances")
 }
 
 model Employee {
@@ -141,4 +142,53 @@ model ExternalIdentity {
   userId    String?
   user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+}
+
+
+model UserAttendance {
+  id        String   @id @default(cuid())
+
+  userId    String
+  user      User     @relation("UserAttendances", fields: [userId], references: [id], onDelete: Cascade)
+
+  // 📅 Day-based tracking (VERY important)
+  workDate  DateTime  @db.Date // store date at 00:00:00 (server timezone)
+
+  // ⏱ Core times
+  loginTime  DateTime
+  logoutTime DateTime?
+
+  // 🧘 Break handling
+  breakStartTime DateTime?
+  breakEndTime   DateTime?
+  totalBreakMinutes Int @default(0)
+
+  // 🧮 Calculated fields (optional but useful)
+  totalWorkingMinutes Int? // excluding breaks
+
+  // 🔐 Safety flags
+  isActiveSession Boolean @default(true) // false after logout
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  breakLogs BreakLog[] @relation("AttendanceBreakLogs")
+
+  @@unique([userId, workDate]) // ONE attendance per user per day
+  @@index([userId])
+  @@index([workDate])
+}
+
+model BreakLog {
+  id           String   @id @default(cuid())
+
+  attendanceId String
+  attendance   UserAttendance @relation("AttendanceBreakLogs", fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  breakStart   DateTime
+  breakEnd     DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([attendanceId])
 }

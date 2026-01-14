@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, ReactNode } from "react";
+import { useEffect, useState, ReactNode, useRef } from "react";
 import axios from "axios";
 import {
   Card,
@@ -40,6 +40,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { createPortal } from "react-dom";
 
 interface Comment {
   id: string;
@@ -238,6 +239,27 @@ const TaskTimelineView = ({ role }: { role: any }) => {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [commentText, setCommentText] = useState("");
   const { toast } = useToast();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedTaskForUpload, setSelectedTaskForUpload] = useState(null);
+  const [tempFile, setTempFile] = useState(null);
+
+  const fileRef = useRef(null);
+
+  // Function to open the modal
+  const openUploadModal = (task: any) => {
+    setSelectedTaskForUpload(task);
+    setIsModalOpen(true);
+    setTempFile(null); // Reset file selection
+  };
+
+  useEffect(() => {
+    if (isModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [isModalOpen]);
 
   const token = localStorage.getItem("token");
   axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
@@ -252,7 +274,10 @@ const TaskTimelineView = ({ role }: { role: any }) => {
           : await axios.get(`${API_BASE_URL}/projectManager/ManagerTasks`);
 
       const fetchedTasks = res.data.tasks || res.data;
-      setTasks(fetchedTasks);
+      const NewTask = fetchedTasks.filter((task: any) => {
+        return task.status != "DONE"
+      })
+      setTasks(NewTask);
     } catch (err) {
       toast({
         title: "Error",
@@ -297,6 +322,7 @@ const TaskTimelineView = ({ role }: { role: any }) => {
   };
 
   const handleFileUpload = async (taskId: string, file: File) => {
+    setLoading(true);
     const formData = new FormData();
     formData.append("file", file);
     try {
@@ -311,16 +337,19 @@ const TaskTimelineView = ({ role }: { role: any }) => {
         prev.map((t) =>
           t.id === taskId
             ? {
-                ...t,
-                employeeFiles: t.employeeFiles
-                  ? [...t.employeeFiles, res.data.fileUrl]
-                  : [res.data.fileUrl],
-              }
+              ...t,
+              employeeFiles: t.employeeFiles
+                ? [...t.employeeFiles, res.data.fileUrl]
+                : [res.data.fileUrl],
+            }
             : t
         )
       );
     } catch (err) {
       console.error("Failed to upload file", err);
+    }
+    finally {
+      setLoading(false);
     }
   };
 
@@ -524,7 +553,7 @@ const TaskTimelineView = ({ role }: { role: any }) => {
                 </div>
 
                 {/* File Upload - FIX: Stop propagation on label click */}
-                <div
+                {/* <div
                   className="flex justify-center items-center lg:w-auto w-1/3"
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -550,6 +579,19 @@ const TaskTimelineView = ({ role }: { role: any }) => {
                         }
                       />
                     </label>
+                  )}
+                </div> */}
+
+                {/* File Upload Section */}
+                <div className="flex justify-center items-center lg:w-auto w-1/3" onClick={(e) => e.stopPropagation()}>
+                  {task.employeeFiles?.length ? (
+                    <a href={task.employeeFiles[0]} target="_blank" rel="noopener noreferrer">
+                      <Upload className="h-4 w-4 sm:h-5 sm:w-5 cursor-pointer text-green-600" />
+                    </a>
+                  ) : (
+                    <button onClick={() => openUploadModal(task)}>
+                      <Upload className={`h-4 w-4 sm:h-5 sm:w-5 cursor-pointer text-gray-400 hover:text-blue-600`} />
+                    </button>
                   )}
                 </div>
 
@@ -603,6 +645,135 @@ const TaskTimelineView = ({ role }: { role: any }) => {
               </div>
             </div>
           ))}
+
+
+          {isModalOpen && (
+            createPortal(
+              <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+                {/* Backdrop with Blur */}
+                <div
+                  className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
+                  onClick={() => setIsModalOpen(false)}
+                />
+
+                {/* Modal Container */}
+                <div className="relative z-[10000] bg-white rounded-2xl shadow-2xl w-[30%] max-w-lg overflow-hidden">
+
+                  {/* Header with Background Pattern */}
+                  <div className="bg-indigo-600 px-6 py-5 text-white relative">
+                    <div className="relative z-10">
+                      <h3 className="text-2xl font-bold">Upload Documents</h3>
+                      <p className="text-indigo-100 text-sm mt-1">Attach files to task: <span className="font-semibold text-white">{selectedTaskForUpload?.taskName || "General Task"}</span></p>
+                    </div>
+                    {/* Decorative Circle */}
+                    <div className="absolute top-[-20px] right-[-20px] h-32 w-32 bg-white/10 rounded-full blur-2xl"></div>
+                  </div>
+
+                  <div className="p-8">
+                    {/* Information Box */}
+                    <div className="flex items-start gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl mb-6">
+                      <div className="p-2 bg-indigo-100 rounded-lg">
+                        <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Accepted Formats</p>
+                        <p className="text-sm text-slate-500">PDF, DOCX, XLSX, CSV, or Images (Max 10MB)</p>
+                      </div>
+                    </div>
+
+                    {/* Upload Area */}
+                    <label className={`
+          relative group cursor-pointer flex flex-col items-center justify-center 
+          border-2 border-dashed rounded-2xl py-10 transition-all duration-200
+          ${tempFile ? 'border-green-400 bg-green-50' : 'border-slate-300 bg-slate-50 hover:border-indigo-400 hover:bg-indigo-50/30'}
+        `}>
+                      <input
+                        ref={fileRef}
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => setTempFile(e.target.files[0])}
+                      />
+
+                      <div className={`p-4 rounded-full mb-4 transition-transform group-hover:scale-110 ${tempFile ? 'bg-green-100 text-green-600' : 'bg-white text-indigo-600 shadow-sm'}`}>
+                        <Upload className="h-8 w-8" />
+                      </div>
+
+                      {!tempFile ? (
+                        <div className="text-center">
+                          <p className="text-base font-semibold text-slate-700">Click to browse or drag file here</p>
+                          <p className="text-xs text-slate-400 mt-1">Your files will be securely uploaded</p>
+                        </div>
+                      ) : (
+                        <div className="text-center px-4">
+                          <p className="text-base font-bold text-green-700 truncate max-w-[250px]">{tempFile.name}</p>
+                          <p className="text-xs text-green-600/70 mt-1">{(tempFile.size / 1024).toFixed(1)} KB • Ready to upload</p>
+                          <button
+                            disabled={loading}
+                            className={`mt-3 text-xs font-bold underline ${loading
+                                ? "text-slate-400 cursor-not-allowed"
+                                : "text-red-500 hover:text-red-700"
+                              }`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (loading) return;
+                              setTempFile(null);
+                              if (fileRef.current) fileRef.current.value = "";
+                            }}
+                          >
+                            Change File
+                          </button>
+                        </div>
+                      )}
+                    </label>
+
+                    {/* Action Buttons */}
+                    <div className="grid grid-cols-2 gap-4 mt-8">
+                      <button
+                        disabled={loading}
+                        onClick={() => !loading && setIsModalOpen(false)}
+                        className={`py-3 px-4 text-sm font-bold rounded-xl transition-colors ${loading
+                            ? "text-slate-400 cursor-not-allowed"
+                            : "text-slate-500 hover:bg-slate-100"
+                          }`}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        disabled={!tempFile || loading}
+                        onClick={async () => {
+                          await handleFileUpload(selectedTaskForUpload.id, tempFile);
+                          setIsModalOpen(false);
+                        }}
+                        className={`
+    py-3 px-4 text-sm font-bold text-white rounded-xl shadow-lg transition-all
+    ${tempFile && !loading
+                            ? "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200 active:scale-[0.98]"
+                            : "bg-slate-300 cursor-not-allowed"
+                          }
+  `}
+                      >
+                        {loading ? "Uploading..." : "Confirm & Submit"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {loading && (
+                    <div className="absolute inset-0 z-[20000] bg-white/70 backdrop-blur-sm flex flex-col items-center justify-center">
+
+                      {/* Spinner */}
+                      <div className="h-10 w-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+
+                      {/* Text */}
+                      <p className="mt-4 text-sm font-semibold text-indigo-700">
+                        Uploading file, please wait...
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>,
+              document.getElementById("modal-root")
+            )
+          )}
 
           {/* 🚀🚀🚀 RESPONSIVE COMMENT MODAL FIX (Final Design) 🚀🚀🚀 */}
           {selectedTask && (
@@ -875,7 +1046,7 @@ export default function EmployeeTaskTimeline() {
                       activeTab === "timeline"
                         ? COLOR_ACCENT_ICON
                         : "text-gray-600"
-                    }`}
+                      }`}
                   />{" "}
                   Assigned Timeline
                 </TabsTrigger>
@@ -894,7 +1065,7 @@ export default function EmployeeTaskTimeline() {
                       activeTab === "calendar"
                         ? COLOR_ACCENT_ICON
                         : "text-gray-600"
-                    }`}
+                      }`}
                   />{" "}
                   Completed Calendar
                 </TabsTrigger>

@@ -31,6 +31,10 @@ import {
 } from "recharts";
 import axios from "axios";
 
+import { useLocation } from "react-router-dom";
+import { useAuth } from "./AuthContext";
+import { toast } from "@/components/ui/use-toast";
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 // ... (Interface definitions remain the same)
@@ -43,6 +47,7 @@ interface Task {
   hoursUsed?: number;
   dueDate?: string;
   priority: "HIGH" | "MEDIUM" | "LOW";
+  isDeleted?: boolean;
 }
 
 interface Stats {
@@ -152,10 +157,45 @@ const SkeletonOperatorDashboard = ({ PRIMARY_COLOR, ACCENT_ICON }) => {
 };
 // --- END SKELETON LOADER COMPONENT ---
 
+const calculateProgress = (task: any) => {
+  switch (task.status) {
+    case "TODO":
+    case "PENDING":
+      return 0;
+
+    case "WORKING":
+      if (task.hoursUsed && task.assignedHours) {
+        return Math.min(
+          Math.round((task.hoursUsed / task.assignedHours) * 100),
+          90
+        );
+      }
+      return 20;
+
+    case "STUCK":
+      return 20;
+
+    case "DONE":
+      return 100;
+
+    default:
+      return 0;
+  }
+};
+
+
+
 export default function OperatorDashboard() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  type WorkState = "WORKING" | "ON_BREAK";
+  const [breakActionLoading, setBreakActionLoading] = useState(false);
+
+  const [workState, setWorkState] = useState<WorkState>("WORKING");
+
+  const { loginTime, setLoginTime } = useAuth();
+  const [breakStartTime, setBreakStartTime] = useState<Date | null>(null);
   const date = new Date();
   const hour = date.getHours();
   let greetings;
@@ -170,6 +210,47 @@ export default function OperatorDashboard() {
     greetings = "Good Night";
   }
 
+
+  useEffect(() => {
+    const syncAttendanceState = async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/employees/attendance/today`,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+            },
+            credentials: "include",
+          }
+        );
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+
+        if (data.loginTime) {
+          setLoginTime(new Date(data.loginTime));
+        }
+
+        if (data.onBreak) {
+          setWorkState("ON_BREAK");
+          setBreakStartTime(new Date(data.breakStartTime));
+        } else {
+          setWorkState("WORKING");
+          setBreakStartTime(null);
+        }
+      } catch (err) {
+        console.error("Attendance sync failed", err);
+      }
+    };
+
+    syncAttendanceState();
+  }, []);
+
+
+
+
+
   const getDashboardData = async () => {
     await new Promise((resolve) => setTimeout(resolve, 800));
 
@@ -181,7 +262,11 @@ export default function OperatorDashboard() {
       });
 
       const { tasks, stats } = response.data;
-      setTasks(tasks);
+      const activeTasks = tasks.filter(
+        (task: Task) =>
+          task.status !== "DONE" && task.isDeleted !== true
+      );
+      setTasks(activeTasks);
       setStats(stats);
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
@@ -194,33 +279,44 @@ export default function OperatorDashboard() {
     getDashboardData();
   }, []);
 
+
+
   const getStatusBadgeStyles = (status: Task["status"]) => {
     switch (status) {
       case "WORKING":
-        return `bg-amber-100 text-amber-700 border-amber-300`;
+        return "bg-blue-100 text-blue-700 border-blue-300";
+
       case "DONE":
-        return `bg-green-100 text-green-700 border-green-300`;
+        return "bg-green-100 text-green-700 border-green-300";
+
       case "TODO":
-        return `bg-gray-100 text-gray-700 border-gray-300`;
+        return "bg-gray-100 text-gray-700 border-gray-300";
+
       case "STUCK":
-        return `bg-red-100 text-red-700 border-red-300`;
+        return "bg-red-100 text-red-700 border-red-300";
+
       default:
-        return `bg-gray-100 text-gray-700`;
+        return "bg-gray-100 text-gray-700";
     }
   };
+
 
   const getPriorityBadgeStyles = (priority: Task["priority"]) => {
     switch (priority) {
       case "HIGH":
-        return `bg-red-600 text-white`;
+        return "bg-red-600 text-white";
+
       case "MEDIUM":
-        return `bg-amber-500 text-white`;
+        return "bg-amber-500 text-white";
+
       case "LOW":
-        return `bg-[${COLOR_PRIMARY}] text-white`;
+        return "text-white"; // background via style
+
       default:
-        return `bg-gray-500 text-white`;
+        return "bg-gray-500 text-white";
     }
   };
+
 
   if (loading) {
     return (
@@ -247,33 +343,165 @@ export default function OperatorDashboard() {
   const xAxisBarChartProps =
     window.innerWidth < 640 // Tailwind's 'sm' breakpoint is 640px
       ? {
-          angle: -45,
-          textAnchor: "end",
-          height: 70,
-          style: { fontSize: "10px" },
-        }
+        angle: -45,
+        textAnchor: "end",
+        height: 70,
+        style: { fontSize: "10px" },
+      }
       : {
-          angle: 0,
-          textAnchor: "middle",
-          height: 30,
-          style: { fontSize: "12px" },
-        };
+        angle: 0,
+        textAnchor: "middle",
+        height: 30,
+        style: { fontSize: "12px" },
+      };
+
+  const handleTakeBreak = async () => {
+    if (breakActionLoading) return;
+
+    setBreakActionLoading(true);
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/employees/attendance/break/start`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          credentials: "include",
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to start break");
+      }
+
+      setBreakStartTime(new Date(data.breakStartTime));
+      setWorkState("ON_BREAK");
+
+      toast({
+        title: "Break started ☕",
+        description: "Relax for a moment. Your break has begun.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Unable to start break",
+        description: err.message || "Something went wrong",
+        variant: "destructive",
+      });
+    } finally {
+      setBreakActionLoading(false);
+    }
+  };
+
+
+
+
+  const handleContinueWork = async () => {
+    if (breakActionLoading) return;
+
+    setBreakActionLoading(true);
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/employees/attendance/break/end`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          credentials: "include",
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to end break");
+      }
+
+      setWorkState("WORKING");
+      setBreakStartTime(null);
+
+      toast({
+        title: "Welcome back 👋",
+        description: "Break ended. You’re back to work.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Unable to continue work",
+        description: err.message || "Something went wrong",
+        variant: "destructive",
+      });
+    } finally {
+      setBreakActionLoading(false);
+    }
+  };
+
+
+
 
   return (
     <Layout>
-      <div className="space-y-6 sm:space-y-8 min-h-screen">
+      <div
+        className={`space-y-6 sm:space-y-8 min-h-screen transition-all duration-300 ${workState === "ON_BREAK"
+          ? "pointer-events-none blur-sm"
+          : ""
+          }`}
+      >
         {/* Header - Optimized for mobile */}
-        <div className="border-b pb-3 sm:pb-4">
-          <h1
-            className="text-2xl sm:text-3xl font-bold mb-1"
-            style={{ color: COLOR_PRIMARY }}
-          >
-            My Task Performance Dashboard
-          </h1>
-          <p className="text-sm sm:text-base text-gray-500">
-            <span className="text-[1rem] font-semibold">{greetings} 👋</span> <br/>
-            Task Management Hub • {new Date().toLocaleDateString("en-US", { dateStyle: "long" })}
-          </p>
+        <div className="border-b pb-3 sm:pb-4 flex justify-between">
+          <div className="">
+            <h1
+              className="text-2xl sm:text-3xl font-bold mb-1"
+              style={{ color: COLOR_PRIMARY }}
+            >
+              My Task Performance Dashboard
+            </h1>
+            <p className="text-sm sm:text-base text-gray-500">
+              <span className="text-[1rem] font-semibold">{greetings} 👋</span> <br />
+              Task Management Hub • {new Date().toLocaleDateString("en-US", { dateStyle: "long" })}
+            </p>
+          </div>
+
+
+          <div className="flex items-center gap-3 mt-2">
+            <button
+              disabled={workState === "ON_BREAK" || breakActionLoading}
+              onClick={handleTakeBreak}
+              style={{ backgroundColor: COLOR_PRIMARY }}
+              className={`
+    px-4 py-2 rounded-lg text-sm font-semibold transition
+    flex items-center gap-2
+    ${breakActionLoading || workState === "ON_BREAK"
+                  ? "opacity-70 cursor-not-allowed"
+                  : "text-white hover:opacity-90"
+                }
+  `}
+            >
+              {breakActionLoading ? (
+                <>
+                  <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin " />
+                  Starting…
+                </>
+              ) : (
+                "Take a Break"
+              )}
+            </button>
+
+            {loginTime && (
+              <p className="text-xs text-gray-400 mt-1">
+                Logged in at:{" "}
+                <span className="font-medium">
+                  {loginTime.toLocaleTimeString()}
+                </span>
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Stats Grid - Optimized for mobile */}
@@ -434,8 +662,7 @@ export default function OperatorDashboard() {
               <Target
                 className={`h-4 w-4 sm:h-5 sm:w-5 ${COLOR_ACCENT_ICON}`}
               />
-              My Assigned Tasks (
-              {stats?.inProgressTasks! + stats?.pendingTasks! || 0} Active)
+              My Assigned Tasks ({tasks.length} Active)
             </h3>
           </div>
           <div className="space-y-3">
@@ -448,10 +675,7 @@ export default function OperatorDashboard() {
               </div>
             ) : (
               tasks.map((task) => {
-                const progress =
-                  task.hoursUsed && task.hoursAllocated
-                    ? (task.hoursUsed / task.hoursAllocated) * 100
-                    : 0;
+                const progress = calculateProgress(task);
 
                 return (
                   <div
@@ -472,10 +696,12 @@ export default function OperatorDashboard() {
                               {task.status}
                             </Badge>
                             <Badge
-                              variant="default"
-                              className={`capitalize ${getPriorityBadgeStyles(
-                                task.priority
-                              )}`}
+                              className={getPriorityBadgeStyles(task.priority)}
+                              style={
+                                task.priority === "LOW"
+                                  ? { backgroundColor: COLOR_PRIMARY }
+                                  : undefined
+                              }
                             >
                               {task.priority.toLowerCase()}
                             </Badge>
@@ -489,12 +715,12 @@ export default function OperatorDashboard() {
                           )}
                           {(task.hoursUsed !== undefined ||
                             task.hoursAllocated !== undefined) && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-2.5 w-2.5" />
-                              {task.hoursUsed || 0}/{task.hoursAllocated || "?"}
-                              h Used
-                            </span>
-                          )}
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-2.5 w-2.5" />
+                                {task.hoursUsed || 0}/{task.hoursAllocated || "?"}
+                                h Used
+                              </span>
+                            )}
                           {task.dueDate && (
                             <span className="flex items-center gap-1">
                               <Calendar className="h-2.5 w-2.5" />
@@ -566,6 +792,71 @@ export default function OperatorDashboard() {
           </Card>
         )}
       </div>
+
+      {workState === "ON_BREAK" && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center">
+
+          {/* Soft dark backdrop */}
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-md" />
+
+          {/* Center content (NO CARD, NO WHITE BG) */}
+          <div className="relative z-[100000] flex flex-col items-center text-center px-6">
+
+            {/* Coffee Mug Icon */}
+            <div className="text-6xl mb-6 animate-pulse">
+              ☕
+            </div>
+
+            {/* Main Message */}
+            <h2 className="text-2xl sm:text-3xl font-semibold text-white mb-2">
+              Take a Break
+            </h2>
+
+            {/* Sub Message */}
+            <p className="text-sm sm:text-base text-gray-200 max-w-md mb-6 leading-relaxed">
+              Relax your mind. Stretch a little.
+              The dashboard is paused until you’re ready to continue.
+            </p>
+
+            {/* Break Time */}
+            {breakStartTime && (
+              <p className="text-sm text-gray-200 mb-8">
+                Break started at{" "}
+                <span className="font-medium text-gray-200">
+                  {breakStartTime.toLocaleTimeString()}
+                </span>
+              </p>
+            )}
+
+            {/* Continue Button */}
+            <button
+              onClick={handleContinueWork}
+              disabled={breakActionLoading}
+              style={{ backgroundColor: COLOR_PRIMARY }}
+              className="
+    px-8 py-3 rounded-full
+    text-sm sm:text-base font-semibold
+    text-white
+    flex items-center gap-2
+    disabled:opacity-70 disabled:cursor-not-allowed
+    transition-all duration-200
+  "
+            >
+              {breakActionLoading ? (
+                <>
+                  <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Continuing…
+                </>
+              ) : (
+                "Continue Working"
+              )}
+            </button>
+
+          </div>
+        </div>
+      )}
+
+
     </Layout>
   );
 }
