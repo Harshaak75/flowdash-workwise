@@ -332,23 +332,63 @@ router.get("/me", auth, async (req, res) => {
   } catch (error) { }
 });
 
+// router.get("/go-to-hrm", ensureFreshKeycloakToken, async (req, res) => {
+//   try {
+//     const { tenantCode } = req.query;
+//     const backend_url = process.env.HRM_BACKEND_ROUTE;
+
+//     if (!tenantCode)
+//       return res.status(400).json({ error: "tenantCode is required" });
+
+//     const accessToken = req.validAccessToken;
+
+//     // Redirect to HRM frontend
+//     const hrmRedirectUrl = `${backend_url}/api/tenant/sso-login/${tenantCode}?token=${accessToken}&sso=1`;
+//     res.json({ redirectUrl: hrmRedirectUrl });
+//   } catch (err: any) {
+//     console.error("Redirect failed:", err.message);
+//     res.status(500).json({ error: "Failed to redirect to HRM" });
+//   }
+// });
+
+
 router.get("/go-to-hrm", ensureFreshKeycloakToken, async (req, res) => {
   try {
-    const { tenantCode } = req.query;
     const backend_url = process.env.HRM_BACKEND_ROUTE;
+    const accessToken: any = req.validAccessToken;
 
-    if (!tenantCode)
-      return res.status(400).json({ error: "tenantCode is required" });
+    const payload: any = jwt.decode(accessToken);
+    const roles = payload.realm_access?.roles || [];
 
-    const accessToken = req.validAccessToken;
+    const tenantRole = roles.find((r: string) =>
+      r.startsWith("TENANT_")
+    );
 
-    // Redirect to HRM frontend
-    const hrmRedirectUrl = `${backend_url}/api/tenant/sso-login/${tenantCode}?token=${accessToken}&sso=1`;
+    if (!tenantRole) {
+      return res.status(403).json({ error: "Tenant role missing" });
+    }
+
+    //TODO: in future change this to the database -> TenantCode
+    const TENANT_ROLE_TO_CODE: Record<string, string> = {
+      TENANT_DOTSPEAK: "DotSpeak_NGO-11-25-002"
+    };
+
+    const tenantCode = TENANT_ROLE_TO_CODE[tenantRole];
+
+    if (!tenantCode) {
+      return res.status(403).json({ error: "Tenant not mapped" });
+    }
+
+    // SAME HRM API AS BEFORE
+    const hrmRedirectUrl =
+      `${backend_url}/api/tenant/sso-login/${tenantCode}?token=${accessToken}&sso=1`;
+
     res.json({ redirectUrl: hrmRedirectUrl });
   } catch (err: any) {
     console.error("Redirect failed:", err.message);
     res.status(500).json({ error: "Failed to redirect to HRM" });
   }
 });
+
 
 export default router;
