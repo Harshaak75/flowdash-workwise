@@ -788,7 +788,7 @@ router.post("/attendance/break/end", auth, async (req, res) => {
 router.get("/employees/attendance/current", auth, async (req, res) => {
   const userId = req.user?.id;
 
-  if(!userId){
+  if (!userId) {
     return res.status(400).json({ error: "User not found" });
   }
 
@@ -859,6 +859,283 @@ router.get("/attendance/today", auth, async (req, res) => {
     res.status(500).json({ error: "Failed to fetch attendance" });
   }
 });
+
+// employee performance
+
+router.get("/dashboard/operator/today-performance", auth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // 1️⃣ Define today range (server timezone)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayStart.getDate() + 1);
+
+    // 2️⃣ Fetch today's task work logs
+    const workLogs = await prisma.taskWorkLog.findMany({
+      where: {
+        userId,
+        startTime: {
+          gte: todayStart,
+          lt: todayEnd,
+        },
+      },
+      include: {
+        task: true,
+      },
+      orderBy: {
+        startTime: "asc",
+      },
+    });
+
+    if (workLogs.length === 0) {
+      return res.json({
+        tasks: [],
+        summary: {
+          totalAssignedMinutes: 0,
+          totalActualMinutes: 0,
+          efficiencyPercent: 100,
+        },
+      });
+    }
+
+    // 3️⃣ Aggregate logs by task (NO time fabrication)
+    const taskMap: Record<string, any> = {};
+
+    for (const log of workLogs) {
+      const taskId = log.taskId;
+
+      if (!taskMap[taskId]) {
+        taskMap[taskId] = {
+          taskId,
+          title: log.task.title,
+          status: log.task.status,
+          assignedMinutes: (log.task.assignedHours || 0) * 60,
+          actualMinutes: 0,
+          startTime: log.startTime,
+          endTime: log.endTime ?? null,
+        };
+      }
+
+      // Calculate minutes ONLY if endTime exists
+      if (log.startTime && log.endTime) {
+        const minutes =
+          Math.max(
+            0,
+            Math.round(
+              (log.endTime.getTime() - log.startTime.getTime()) / 60000
+            )
+          );
+
+        taskMap[taskId].actualMinutes += minutes;
+      }
+
+      // Earliest start time
+      if (log.startTime < taskMap[taskId].startTime) {
+        taskMap[taskId].startTime = log.startTime;
+      }
+
+      // Latest REAL end time (from DB only)
+      if (log.endTime) {
+        if (
+          !taskMap[taskId].endTime ||
+          log.endTime > taskMap[taskId].endTime
+        ) {
+          taskMap[taskId].endTime = log.endTime;
+        }
+      }
+    }
+
+    // 4️⃣ Prepare response
+    let totalAssignedMinutes = 0;
+    let totalActualMinutes = 0;
+
+    const tasks = Object.values(taskMap).map((task: any) => {
+      totalAssignedMinutes += task.assignedMinutes;
+      totalActualMinutes += task.actualMinutes;
+
+      return {
+        taskId: task.taskId,
+        title: task.title,
+        status: task.status,
+        assignedMinutes: task.assignedMinutes,
+        actualMinutes: task.actualMinutes,
+        varianceMinutes: task.actualMinutes - task.assignedMinutes,
+        startTime: task.startTime ? task.startTime.toISOString() : null,
+        endTime: task.endTime ? task.endTime.toISOString() : null,
+        isRunning: task.endTime === null,
+      };
+    });
+
+    // 5️⃣ Efficiency (industry correct)
+    const efficiencyPercent =
+      totalAssignedMinutes > 0
+        ? Math.round((totalActualMinutes / totalAssignedMinutes) * 100)
+        : 100;
+
+    // 6️⃣ Send response
+    res.json({
+      tasks,
+      summary: {
+        totalAssignedMinutes,
+        totalActualMinutes,
+        efficiencyPercent,
+      },
+    });
+  } catch (error) {
+    console.error("Today performance error:", error);
+    res.status(500).json({ error: "Failed to load today performance" });
+  }
+});
+
+router.get("/dashboard/manager/today-performance", auth, async (req, res) => {
+  try {
+    const managerId = req.user?.id;
+
+    if (!managerId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // 1️⃣ Find employees under this manager (CORRECT TABLE)
+    const employees = await prisma.employee.findMany({
+      where: {
+        managerId,
+        user: {
+          role: "OPERATOR",
+        },
+      },
+      select: {
+        userId: true,
+        name: true,
+      },
+    });
+
+    const operatorIds = employees.map(e => e.userId);
+
+    if (operatorIds.length === 0) {
+      return res.json({
+        tasks: [],
+        summary: {
+          totalAssignedMinutes: 0,
+          totalActualMinutes: 0,
+          efficiencyPercent: 100,
+        },
+      });
+    }
+
+    // 2️⃣ Define today range
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayStart.getDate() + 1);
+
+    // 3️⃣ Fetch work logs for all operators
+    const workLogs = await prisma.taskWorkLog.findMany({
+      where: {
+        userId: { in: operatorIds },
+        startTime: {
+          gte: todayStart,
+          lt: todayEnd,
+        },
+      },
+      include: {
+        task: true,
+        user: true,
+      },
+      orderBy: { startTime: "asc" },
+    });
+
+    // 4️⃣ Aggregate by task (NO fabricated time)
+    const taskMap: Record<string, any> = {};
+
+    for (const log of workLogs) {
+      const taskId = log.taskId;
+
+      if (!taskMap[taskId]) {
+        taskMap[taskId] = {
+          taskId,
+          title: log.task.title,
+          assignedMinutes: (log.task.assignedHours || 0) * 60,
+          actualMinutes: 0,
+          startTime: log.startTime,
+          endTime: log.endTime ?? null,
+        };
+      }
+
+      // Only closed logs count
+      if (log.startTime && log.endTime) {
+        const minutes = Math.max(
+          0,
+          Math.round(
+            (log.endTime.getTime() - log.startTime.getTime()) / 60000
+          )
+        );
+        taskMap[taskId].actualMinutes += minutes;
+      }
+
+      // Earliest start
+      if (log.startTime < taskMap[taskId].startTime) {
+        taskMap[taskId].startTime = log.startTime;
+      }
+
+      // Latest REAL endTime
+      if (log.endTime) {
+        if (
+          !taskMap[taskId].endTime ||
+          log.endTime > taskMap[taskId].endTime
+        ) {
+          taskMap[taskId].endTime = log.endTime;
+        }
+      }
+    }
+
+    // 5️⃣ Prepare response
+    let totalAssignedMinutes = 0;
+    let totalActualMinutes = 0;
+
+    const tasks = Object.values(taskMap).map((task: any) => {
+      totalAssignedMinutes += task.assignedMinutes;
+      totalActualMinutes += task.actualMinutes;
+
+      return {
+        taskId: task.taskId,
+        title: task.title,
+        assignedMinutes: task.assignedMinutes,
+        actualMinutes: task.actualMinutes,
+        varianceMinutes: task.actualMinutes - task.assignedMinutes,
+        startTime: task.startTime?.toISOString() ?? null,
+        endTime: task.endTime?.toISOString() ?? null,
+        isRunning: task.endTime === null,
+      };
+    });
+
+    const efficiencyPercent =
+      totalAssignedMinutes > 0
+        ? Math.round((totalActualMinutes / totalAssignedMinutes) * 100)
+        : 100;
+
+    res.json({
+      tasks,
+      summary: {
+        totalAssignedMinutes,
+        totalActualMinutes,
+        efficiencyPercent,
+      },
+    });
+  } catch (error) {
+    console.error("Manager today performance error:", error);
+    res.status(500).json({ error: "Failed to load manager performance" });
+  }
+});
+
+
 
 
 

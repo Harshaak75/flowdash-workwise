@@ -1,38 +1,27 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, ReactNode } from "react";
 import { Layout } from "@/components/Layout";
 import { StatsCard } from "@/components/StatsCard";
-import { Card, CardDescription, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import {
+    Card,
+    CardDescription,
+    CardTitle,
+    CardHeader,
+    CardContent,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-    FolderKanban,
-    Users,
-    Clock,
-    CheckCircle2,
-    Plus,
-    TrendingUp,
-    Calendar,
-    FileText,
-    AlertCircle,
-    Zap,
-} from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
+import {
+    Clock,
+    FolderKanban,
+    TrendingUp,
+    Target,
+    AlertCircle,
+    Activity,
+    Coffee,
+    Calendar,
+    Loader2, // Added for button loading UX
+} from "lucide-react";
 import {
     BarChart,
     Bar,
@@ -41,523 +30,324 @@ import {
     CartesianGrid,
     Tooltip,
     ResponsiveContainer,
-    LineChart,
-    Line,
+    Cell,
 } from "recharts";
 import { useAuth } from "../AuthContext";
-// import { ThreeDot} from 'react-loading-indicators'; // Removed ThreeDot
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const PRIMARY_COLOR = "#0000cc";
 
-// --- SKELETON LOADER COMPONENT ---
-const SkeletonManagerDashboard = ({ PRIMARY_COLOR }) => {
-    // Helper component for a stat card placeholder
-    const StatCardSkeleton = () => (
-        <Card className="p-4 border border-gray-100 shadow-sm h-28 animate-pulse">
-            <div className="flex items-center space-x-4">
-                <div className="h-10 w-10 bg-gray-300 rounded-full"></div>
-                <div>
-                    <div className="h-4 w-24 bg-gray-200 rounded mb-1"></div>
-                    <div className="h-6 w-16 bg-gray-300 rounded"></div>
+/* ---------------- SKELETON LOADER (Replaces Null Return) ---------------- */
+const SkeletonManagerDashboard = () => (
+    <Layout>
+        <div className="p-4 sm:p-10 space-y-10">
+            <div className="flex justify-between items-center border-b pb-6">
+                <div className="space-y-3">
+                    <div className="h-10 w-72 bg-slate-200 rounded-full animate-pulse" />
+                    <div className="h-4 w-48 bg-slate-100 rounded-full animate-pulse" />
                 </div>
+                <div className="h-12 w-40 bg-slate-200 rounded-2xl animate-pulse" />
             </div>
-            <div className="h-3 w-32 bg-gray-100 rounded mt-3"></div>
-        </Card>
-    );
-
-    // Helper component for a team row placeholder
-    const TeamRowSkeleton = () => (
-        <div className="p-4 rounded-lg border border-gray-100 bg-white animate-pulse">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4 flex-1">
-                    <div className="h-12 w-12 rounded-full bg-gray-300"></div>
-                    <div className="flex-1 space-y-1">
-                        <div className="h-5 w-48 bg-gray-200 rounded"></div>
-                        <div className="h-3 w-24 bg-gray-100 rounded"></div>
-                    </div>
-                </div>
-                <div className="flex items-center gap-8">
-                    <div className="h-10 w-10 bg-gray-200 rounded"></div>
-                    <div className="h-10 w-10 bg-gray-200 rounded"></div>
-                    <div className="h-10 w-20 bg-gray-200 rounded"></div>
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="h-32 bg-slate-100 rounded-3xl animate-pulse" />
+                ))}
             </div>
-        </div>
-    );
-
-    return (
-        <Layout>
-            <div className="space-y-8 min-h-screen">
-                {/* Skeleton Header */}
-                <div className="flex items-center justify-between border-b pb-4 animate-pulse">
-                    <div>
-                        <div className="h-8 w-80 bg-gray-300 rounded"></div>
-                        <div className="h-4 w-96 bg-gray-200 rounded mt-2"></div>
-                    </div>
-                    <div className="h-10 w-40 bg-blue-200 rounded-lg"></div>
-                </div>
-
-                {/* Skeleton Stats Grid */}
-                <div className="grid gap-4 md:grid-cols-4">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                        <StatCardSkeleton key={i} />
-                    ))}
-                </div>
-
-                {/* Skeleton Charts */}
-                <div className="grid gap-6 lg:grid-cols-2">
-                    <Card className="p-6 border border-gray-200/50 shadow-sm h-[320px] animate-pulse">
-                        <div className="h-5 w-48 bg-gray-200 rounded mb-4"></div>
-                        <div className="h-[250px] w-full bg-gray-100 rounded-lg"></div>
-                    </Card>
-                    <Card className="p-6 border border-gray-200/50 shadow-sm h-[320px] animate-pulse">
-                        <div className="h-5 w-48 bg-gray-200 rounded mb-4"></div>
-                        <div className="h-[250px] w-full bg-gray-100 rounded-lg"></div>
-                    </Card>
-                </div>
-
-                {/* Skeleton Team Overview */}
-                <Card className="p-6 border border-gray-200/50 shadow-md animate-pulse">
-                    <div className="flex items-center justify-between mb-6">
-                        <div className="h-5 w-40 bg-gray-300 rounded"></div>
-                        <div className="flex items-center gap-2">
-                            <div className="h-8 w-64 bg-gray-200 rounded"></div>
-                            <div className="h-8 w-32 bg-gray-200 rounded"></div>
-                        </div>
-                    </div>
-                    <div className="space-y-4">
-                        {Array.from({ length: 4 }).map((_, i) => (
-                            <TeamRowSkeleton key={i} />
-                        ))}
-                    </div>
-                </Card>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div className="lg:col-span-7 h-[450px] bg-slate-100 rounded-3xl animate-pulse" />
+                <div className="lg:col-span-5 h-[450px] bg-slate-100 rounded-3xl animate-pulse" />
             </div>
-        </Layout>
-    );
-};
-// --- END SKELETON LOADER COMPONENT ---
-
-
-
-
-
-export default function ManagerDashboard() {
-    const [isCreateEmpOpen, setIsCreateEmpOpen] = useState(false);
-    const [loading, setLoading] = useState(true);
-    const [dashboardData, setDashboardData] = useState<any>(null);
-
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-    const PRIMARY_COLOR = "#0000cc";
-
-    type WorkState = "WORKING" | "ON_BREAK";
-
-    const [workState, setWorkState] = useState<WorkState>("WORKING");
-    const [breakStartTime, setBreakStartTime] = useState<Date | null>(null);
-    const [breakLoading, setBreakLoading] = useState(false);
-    
-
-    const { loginTime, setLoginTime } = useAuth();
-  useEffect(() => {
-    const syncAttendanceState = async () => {
-      try {
-        const res = await fetch(
-          `${API_BASE_URL}/employees/attendance/today`,
-          {
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-            credentials: "include",
-          }
-        );
-
-        if (!res.ok) return;
-
-        const data = await res.json();
-
-        if (data.loginTime) {
-          setLoginTime(new Date(data.loginTime));
-        }
-
-        if (data.onBreak) {
-          setWorkState("ON_BREAK");
-          setBreakStartTime(new Date(data.breakStartTime));
-        } else {
-          setWorkState("WORKING");
-          setBreakStartTime(null);
-        }
-      } catch (err) {
-        console.error("Attendance sync failed", err);
-      }
-    };
-
-    syncAttendanceState();
-  }, []);
-
-    const handleTakeBreak = async () => {
-        try {
-            setBreakLoading(true);
-
-            const res = await fetch(
-                `${API_BASE_URL}/employees/attendance/break/start`,
-                {
-                    method: "POST",
-                    headers: {
-                        Authorization: `Bearer ${localStorage.getItem("token")}`,
-                    },
-                    credentials: "include",
-                }
-            );
-
-            if (!res.ok) throw new Error("Failed to start break");
-
-            const data = await res.json();
-
-            setBreakStartTime(new Date(data.breakStartTime));
-            setWorkState("ON_BREAK");
-        } catch (err) {
-            alert("Unable to start break. Try again.");
-        } finally {
-            setBreakLoading(false);
-        }
-    };
-
-    const handleContinueWork = async () => {
-        try {
-            setBreakLoading(true);
-
-            const res = await fetch(
-                `${API_BASE_URL}/employees/attendance/break/end`,
-                {
-                    method: "POST",
-                    headers: {
-                        Authorization: `Bearer ${localStorage.getItem("token")}`,
-                    },
-                    credentials: "include",
-                }
-            );
-
-            if (!res.ok) throw new Error("Failed to end break");
-
-            setWorkState("WORKING");
-            setBreakStartTime(null);
-        } catch (err) {
-            alert("Unable to continue work.");
-        } finally {
-            setBreakLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        async function fetchDashboard() {
-            // Simulate a slight delay to allow the skeleton screen to be visible
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            try {
-                const res = await fetch(`${API_BASE_URL}/employees/dashboard`, {
-                    headers: {
-                        Authorization: `Bearer ${localStorage.getItem("token")}`, // adjust if using cookies
-                    },
-                });
-                if (!res.ok) throw new Error("Failed to fetch dashboard data");
-                const data = await res.json();
-
-                // *** Using dummy data structure if the fetch is unsuccessful for component display, 
-                //     you should remove this once your API is fully stable. ***
-                if (!data || !data.weeklyData || !data.performanceData) {
-                    setDashboardData({
-                        totalEmployees: 45,
-                        activeEmployees: 40,
-                        totalTasks: 120,
-                        completionRate: 85,
-                        weeklyData: [{ day: 'Mon', hours: 8 }, { day: 'Tue', hours: 9 }, { day: 'Wed', hours: 7 }, { day: 'Thu', hours: 8 }, { day: 'Fri', hours: 10 }],
-                        performanceData: [{ week: 'W1', completion: 70 }, { week: 'W2', completion: 75 }, { week: 'W3', completion: 85 }, { week: 'W4', completion: 90 }],
-                        teamOverview: [
-                            { id: 1, name: 'Alex Johnson', status: 'Active', role: 'Developer', tasksCompleted: 20, hoursLogged: 45, efficiency: 88 },
-                            { id: 2, name: 'Maya Lee', status: 'Active', role: 'Designer', tasksCompleted: 15, hoursLogged: 40, efficiency: 92 },
-                            { id: 3, name: 'Ben Wong', status: 'On Leave', role: 'Analyst', tasksCompleted: 5, hoursLogged: 10, efficiency: 50 },
-                        ],
-                    });
-                } else {
-                    setDashboardData(data);
-                }
-
-                setLoading(false);
-            } catch (error) {
-                console.error(error);
-                setLoading(false);
-            }
-        }
-        fetchDashboard();
-    }, []);
-
-    if (loading) {
-        return <SkeletonManagerDashboard PRIMARY_COLOR={PRIMARY_COLOR} />;
-    }
-
-    // Error state (remains the same)
-    if (!dashboardData) return <Layout>
-        <div className="flex items-center justify-center h-[calc(100vh-80px)] p-6">
-            <Card className="w-full max-w-lg p-6 text-center border-red-500 bg-red-50 shadow-xl">
-                <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-600" />
-                <CardTitle className="text-2xl font-bold mb-2" style={{ color: PRIMARY_COLOR }}>
-                    Data Loading Failed
-                </CardTitle>
-                <CardDescription className="text-red-800 mb-4">
-                    {"We're having trouble loading the dashboard data right now. Please try refreshing the page."}
-                </CardDescription>
-                <Button
-                    onClick={() => window.location.reload()}
-                    className="gap-2 bg-[#0000cc] hover:bg-[#0000cc]/90 text-white rounded-lg shadow-md"
-                >
-                    <Zap className="h-4 w-4 text-red-500" />
-                    Try Refreshing
-                </Button>
-            </Card>
         </div>
     </Layout>
+);
 
-    const {
-        totalEmployees,
-        activeEmployees,
-        totalTasks,
-        completionRate,
-        weeklyData,
-        performanceData,
-        teamOverview,
-    } = dashboardData;
+export default function ManagerDashboard() {
+    const [loading, setLoading] = useState(true);
+    const [dashboardData, setDashboardData] = useState<any>(null);
+    const [tasks, setTasks] = useState<any[]>([]);
+    const [now, setNow] = useState(new Date());
+
+    const [workState, setWorkState] = useState<"WORKING" | "ON_BREAK">("WORKING");
+    const [breakStartTime, setBreakStartTime] = useState<Date | null>(null);
+    const [breakLoading, setBreakLoading] = useState(false);
+
+    const { loginTime, setLoginTime } = useAuth();
+
+    useEffect(() => {
+        const timer = setInterval(() => setNow(new Date()), 60000);
+        return () => clearInterval(timer);
+    }, []);
+
+    useEffect(() => {
+        const syncAttendance = async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/employees/attendance/today`, {
+                    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.loginTime) setLoginTime(new Date(data.loginTime));
+                if (data.onBreak) {
+                    setWorkState("ON_BREAK");
+                    setBreakStartTime(new Date(data.breakStartTime));
+                }
+            } catch (e) { console.error(e); }
+        };
+        syncAttendance();
+    }, []);
+
+    useEffect(() => {
+        const fetchAll = async () => {
+            try {
+                const [dashRes, taskRes] = await Promise.all([
+                    fetch(`${API_BASE_URL}/employees/dashboard`, {
+                        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+                    }),
+                    fetch(`${API_BASE_URL}/employees/dashboard/manager/today-performance`, {
+                        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+                    }),
+                ]);
+                const dash = await dashRes.json();
+                const perf = await taskRes.json();
+                setDashboardData(dash);
+                setTasks(perf.tasks || []);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchAll();
+    }, []);
+
+    const handleBreak = async (start: boolean) => {
+        setBreakLoading(true);
+        const endpoint = start ? "start" : "end";
+        try {
+            const res = await fetch(`${API_BASE_URL}/employees/attendance/break/${endpoint}`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            });
+            const data = await res.json();
+            if (start) {
+                setBreakStartTime(new Date(data.breakStartTime));
+                setWorkState("ON_BREAK");
+            } else {
+                setWorkState("WORKING");
+                setBreakStartTime(null);
+            }
+        } catch (e) { console.error(e); }
+        finally { setBreakLoading(false); }
+    };
+
+    // Return Skeleton while loading to prevent "Vanishing Sidebar" bug
+    if (loading) return <SkeletonManagerDashboard />;
+
+    /* ---------------- BAR DATA ---------------- */
+    const taskChartData = tasks.map((t) => {
+        let actual = t.actualMinutes || 0;
+        if (t.startTime && !t.endTime) {
+            actual += Math.floor((now.getTime() - new Date(t.startTime).getTime()) / 60000);
+        }
+        return {
+            name: t.title.length > 8 ? t.title.slice(0, 8) + ".." : t.title,
+            Assigned: t.assignedMinutes,
+            Actual: actual,
+            variance: actual - t.assignedMinutes,
+        };
+    });
+
+    const totalAssigned = taskChartData.reduce((s, t) => s + t.Assigned, 0);
+    const totalActual = taskChartData.reduce((s, t) => s + t.Actual, 0);
+    const efficiency = totalAssigned > 0 ? Math.round((totalActual / totalAssigned) * 100) : 100;
 
     return (
         <Layout>
-            <div
-                className={`space-y-8 transition-all duration-300 ${workState === "ON_BREAK" ? "pointer-events-none blur-sm" : ""
-                    }`}
-            >
-                {/* Header */}
-                <div className="flex items-center justify-between border-b pb-4">
-                    <div>
-                        <h1 className="text-3xl font-bold text-[#0000cc]">
-                            Manager Dashboard
-                        </h1>
-                        <p className="text-gray-500">
-                            Manage team, track performance, and assign tasks
+            <div className={`p-4 sm:p-8 space-y-8 min-h-screen transition-all duration-300 ${workState === "ON_BREAK" ? "blur-sm pointer-events-none scale-[0.99]" : ""}`}>
+
+                {/* HEADER */}
+                <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-200 pb-6">
+                    <div className="space-y-1">
+                        <h1 className="text-3xl font-extrabold tracking-tight text-[#0000cc]">My Task Performance Dashboard</h1>
+                        <p className="text-slate-500">
+                            <span className="font-semibold text-lg">Good Evening 👋</span> <br />
+                            Task Management Hub • January 15, 2026
                         </p>
-
-                        {loginTime && (
-                            <p className="text-sm text-gray-400 mt-2">
-                                Logged in at{" "}
-                                <span className="font-medium">
-                                    {loginTime.toLocaleTimeString()}
-                                </span>
-                            </p>
-                        )}
                     </div>
 
-                    <button
-                        disabled={workState === "ON_BREAK" || breakLoading}
-                        onClick={handleTakeBreak}
-                        className={`px-5 py-2 rounded-lg text-sm font-semibold transition
-      ${workState === "ON_BREAK"
-                                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                : "bg-[#0000cc] text-white hover:bg-[#0000cc]/90"
-                            }
-    `}
-                    >
-                        {breakLoading ? "Processing..." : "Take a Break"}
-                    </button>
-                </div>
-
-            </div>
-
-            {/* Stats Grid */}
-            <div className="grid pt-4 pb-4 gap-4 md:grid-cols-4">
-                <StatsCard
-                    title="Total Employees"
-                    value={totalEmployees}
-                    icon={Users}
-                    trend={`${activeEmployees} active`}
-                    trendUp={true}
-                    color="primary"
-                />
-                <StatsCard
-                    title="Total Tasks"
-                    value={totalTasks}
-                    icon={FolderKanban}
-                    trend={`${completionRate}% completed`}
-                    trendUp={true}
-                    color="success"
-                />
-                <StatsCard
-                    title="Total Hours (Week)"
-                    value={weeklyData.reduce((sum: number, d: any) => sum + d.hours, 0)}
-                    icon={Clock}
-                    trend="Weekly logged hours"
-                    trendUp={true}
-                    color="warning"
-                />
-                <StatsCard
-                    title="Completion Rate"
-                    value={`${completionRate}%`}
-                    icon={CheckCircle2}
-                    trend="+ vs last week"
-                    trendUp={true}
-                    color="success"
-                />
-            </div>
-
-            {/* Charts */}
-            <div className="grid gap-6 pt-4 pb-4 lg:grid-cols-2">
-                <Card className="p-6 border border-[#0000cc]/20 shadow-sm hover:shadow-md transition-all">
-                    <div className="flex items-center gap-2 mb-4">
-                        <TrendingUp className="h-5 w-5 text-red-500" />
-                        <h3 className="text-lg font-semibold text-[#0000cc]">Weekly Hours Overview</h3>
-                    </div>
-                    <ResponsiveContainer width="100%" height={250}>
-                        <BarChart data={weeklyData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                            <XAxis dataKey="day" stroke="#666" />
-                            <YAxis stroke="#666" />
-                            <Tooltip />
-                            <Bar dataKey="hours" fill="#0000cc" radius={[6, 6, 0, 0]} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </Card>
-
-                <Card className="p-6 border border-[#0000cc]/20 shadow-sm hover:shadow-md transition-all">
-                    <div className="flex items-center gap-2 mb-4">
-                        <CheckCircle2 className="h-5 w-5 text-red-500" />
-                        <h3 className="text-lg font-semibold text-[#0000cc]">Task Completion Trend</h3>
-                    </div>
-                    <ResponsiveContainer width="100%" height={250}>
-                        <LineChart data={performanceData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                            <XAxis dataKey="week" stroke="#666" />
-                            <YAxis stroke="#666" />
-                            <Tooltip />
-                            <Line
-                                type="monotone"
-                                dataKey="completion"
-                                stroke="#0000cc"
-                                strokeWidth={3}
-                                dot={{ fill: "#D70707", r: 5 }}
-                            />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </Card>
-            </div>
-
-            {/* Team Overview */}
-            <Card className="p-6 border border-[#0000cc]/20 shadow-md">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-[#0000cc]">Team Overview</h3>
-                    <div className="flex items-center gap-2">
-                        <Input placeholder="Search employees..." className="w-64 border-gray-300" />
-                        <Select>
-                            <SelectTrigger className="w-32">
-                                <SelectValue placeholder="Status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All</SelectItem>
-                                <SelectItem value="active">Active</SelectItem>
-                                <SelectItem value="leave">On Leave</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                </div>
-
-                <div className="space-y-4">
-                    {teamOverview.map((emp: any) => (
-                        <div
-                            key={emp.id}
-                            className="p-4 rounded-lg border border-gray-200 hover:border-[#0000cc]/40 transition-all bg-white hover:shadow-md"
+                    <div className="flex flex-col items-end gap-3">
+                        <Button
+                            onClick={() => handleBreak(true)}
+                            disabled={breakLoading}
+                            className="bg-[#0000cc] hover:bg-[#0000cc]/90 text-white font-bold px-8 py-6 rounded-2xl shadow-lg shadow-blue-200 min-w-[160px]"
                         >
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4 flex-1">
-                                    <div className="h-12 w-12 rounded-full bg-[#0000cc] flex items-center justify-center text-white font-semibold">
-                                        {emp.name.split(" ").map((n: string) => n[0]).join("")}
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <h4 className="font-semibold text-gray-800">{emp.name}</h4>
-                                            <Badge
-                                                variant={emp.status === "Active" ? "success" : "default"}
-                                                className={emp.status === "Active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}
+                            {breakLoading ? (
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                            ) : (
+                                "Take a Break"
+                            )}
+                        </Button>
+                        <p className="text-[12px] text-slate-400 font-medium pr-2">Logged in at: <span className="font-bold">3:49:43 PM</span></p>
+                    </div>
+                </header>
+
+                {/* STATS */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <StatsCard title="Total Tasks" value="25" icon={FolderKanban} color="primary" trend="15 completed" trendUp={true} />
+                    <StatsCard title="In Progress" value="1" icon={Clock} color="warning" trend="8 pending" />
+                    <StatsCard title="Today Assigned" value="16h" icon={Target} color="primary" />
+                    <StatsCard title="Efficiency" value="1%" icon={TrendingUp} color="success" trend="Within estimate" />
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    {/* LEFT: CHART */}
+                    <div className="lg:col-span-7">
+                        <Card className="border-none shadow-sm bg-white overflow-hidden rounded-3xl">
+                            <CardHeader className="bg-slate-50/30 border-b border-slate-100 pb-4 p-6">
+                                <CardTitle className="text-lg font-bold text-[#0000cc] flex items-center gap-2">
+                                    <Clock className="h-5 w-5 text-red-500" /> Today's Task Time Usage
+                                </CardTitle>
+                                <CardDescription>Assigned vs actual working time (today only)</CardDescription>
+                            </CardHeader>
+                            <CardContent className="pt-8 p-6 flex flex-col items-center justify-center min-h-[350px]">
+                                {taskChartData.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height={350}>
+                                        <BarChart data={taskChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+                                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={(value) => `${value}m`} />
+                                            <Tooltip
+                                                cursor={{ fill: '#f8fafc' }}
+                                                formatter={(value: any, name: any) => [`${value} minutes`, name]}
+                                                contentStyle={{
+                                                    borderRadius: '12px',
+                                                    border: 'none',
+                                                    boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
+                                                }}
+                                            />
+                                            <Bar
+                                                dataKey="Assigned"
+                                                name="Assigned"
+                                                fill="#94a3b8"
+                                                radius={[4, 4, 0, 0]}
+                                                barSize={35}
+                                            />
+                                            <Bar
+                                                dataKey="Actual"
+                                                name="Actual"
+                                                radius={[4, 4, 0, 0]}
+                                                barSize={35}
                                             >
-                                                {emp.status}
-                                            </Badge>
+                                                {taskChartData.map((entry, index) => (
+                                                    <Cell key={index} fill={entry.variance > 0 ? "#ef4444" : "#0000cc"} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    /* INFORMATIVE EMPTY STATE MESSAGE */
+                                    <div className="flex flex-col items-center justify-center space-y-4 animate-in fade-in duration-700">
+                                        <div className="p-4 bg-slate-50 rounded-full">
+                                            <Target className="h-12 w-12 text-slate-300" />
                                         </div>
-                                        <p className="text-sm text-gray-500">{emp.role}</p>
+                                        <div className="text-center">
+                                            <h3 className="text-lg font-bold text-slate-700">No Assigned Tasks Today</h3>
+                                            <p className="text-sm text-slate-400 max-w-[250px]">
+                                                Your schedule is clear for today. New tasks will appear here once they are assigned.
+                                            </p>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="flex items-center gap-8">
-                                    <div className="text-center">
-                                        <p className="text-sm text-gray-500">Tasks</p>
-                                        <p className="text-lg font-semibold text-[#0000cc]">{emp.tasksCompleted}</p>
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="text-sm text-gray-500">Hours</p>
-                                        <p className="text-lg font-semibold text-[#0000cc]">{emp.hoursLogged}h</p>
-                                    </div>
-                                    <div className="text-center min-w-[80px]">
-                                        <p className="text-sm text-gray-500 mb-1">Efficiency</p>
-                                        <Progress value={emp.efficiency} className="h-2 bg-blue-100" />
-                                        <p className="text-xs font-medium mt-1 text-[#0000cc]">{emp.efficiency}%</p>
-                                    </div>
-                                </div>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        <div className="mt-6 flex items-center gap-4 p-5 bg-red-50 border border-red-100 rounded-3xl">
+                            <div className="bg-red-500 p-2.5 rounded-2xl shadow-lg shadow-red-200">
+                                <AlertCircle className="h-6 w-6 text-white" />
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-red-900 text-sm">Pending Tasks Reminder</h4>
+                                <p className="text-xs text-red-700">You have 8 task(s) that need attention to meet deadlines.</p>
                             </div>
                         </div>
-                    ))}
+                    </div>
 
-
+                    {/* RIGHT: TASK LIST */}
+                    <div className="lg:col-span-5">
+                        <Card className="border-none shadow-sm h-full flex flex-col bg-white rounded-3xl overflow-hidden">
+                            <CardHeader className="bg-slate-50/30 border-b border-slate-100 flex-row items-center justify-between space-y-0 p-6">
+                                <CardTitle className="text-lg font-bold text-[#0000cc] flex items-center gap-2">
+                                    <Target className="h-5 w-5 text-red-500" /> My Assigned Tasks
+                                </CardTitle>
+                                {/* <Badge className="bg-blue-100 text-[#0000cc] border-none font-bold">8 Active</Badge> */}
+                            </CardHeader>
+                            <CardContent className="p-6 space-y-4 overflow-y-auto max-h-[600px] flex-1">
+                                {tasks.length > 0 ? (
+                                    /* SHOW TASK LIST IF TASKS EXIST */
+                                    tasks.map((task) => (
+                                        <div key={task.id} className="p-5 rounded-[1rem] border border-slate-100 bg-white shadow-sm border-l-4 border-l-amber-500 relative transition-all hover:shadow-md hover:scale-[1.01]">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div className="space-y-0.5">
+                                                    <h4 className="font-bold text-slate-900 text-[1rem]">{task.title}</h4>
+                                                    <p className="text-[10px] text-[#0000cc] font-black uppercase tracking-widest">{task.project || "GENERAL"}</p>
+                                                </div>
+                                                <Badge className="bg-blue-700 text-[9px] px-2 py-0.5 rounded-md uppercase font-black">MEDIUM</Badge>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold mb-3 mt-2">
+                                                <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> 0/?h</span>
+                                                <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Due: 1/14/2026</span>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <div className="flex justify-between text-[10px] font-black uppercase tracking-tighter text-slate-400">
+                                                    <span>Progress</span>
+                                                    <span className="text-[#0000cc]">0%</span>
+                                                </div>
+                                                <Progress value={0} className="h-1.5 bg-slate-100" />
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    /* SHOW EMPTY STATE MESSAGE IF NO TASKS */
+                                    <div className="flex flex-col items-center justify-center h-full min-h-[300px] space-y-4 animate-in fade-in duration-500">
+                                        <div className="p-4 bg-blue-50 rounded-2xl">
+                                            <FolderKanban className="h-10 w-10 text-blue-200" />
+                                        </div>
+                                        <div className="text-center px-6">
+                                            <h3 className="font-bold text-slate-700 text-lg">No Active Tasks</h3>
+                                            <p className="text-sm text-slate-400 mt-1 leading-relaxed">
+                                                There are no tasks assigned to you at the moment. Enjoy your downtime or check back later.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </div>
                 </div>
+            </div>
 
-
-
-
-            </Card>
-
+            {/* BREAK OVERLAY */}
             {workState === "ON_BREAK" && (
-                <div className="fixed inset-0 z-[99999] flex items-center justify-center">
-                    {/* Backdrop */}
-                    <div className="absolute inset-0 bg-black/50 backdrop-blur-md" />
-
-                    {/* Content */}
-                    <div className="relative z-[100000] flex flex-col items-center text-center px-6">
-                        <div className="text-6xl mb-6 animate-pulse">☕</div>
-
-                        <h2 className="text-2xl sm:text-3xl font-semibold text-white mb-2">
-                            Take a Break
-                        </h2>
-
-                        <p className="text-sm sm:text-base text-gray-200 max-w-md mb-6">
-                            You’re currently on a break.
-                            The dashboard is paused until you continue.
-                        </p>
-
-                        {breakStartTime && (
-                            <p className="text-sm text-gray-200 mb-8">
-                                Break started at{" "}
-                                <span className="font-medium">
-                                    {breakStartTime.toLocaleTimeString()}
-                                </span>
-                            </p>
-                        )}
-
-                        <button
-                            onClick={handleContinueWork}
+                <div className="fixed inset-0 z-[100] flex items-center justify-center animate-in fade-in duration-500">
+                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md" />
+                    <div className="relative z-10 text-center max-w-sm px-6">
+                        <div className="w-24 h-24 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl animate-bounce">
+                            <Coffee className="h-10 w-10 text-[#0000cc]" />
+                        </div>
+                        <h2 className="text-3xl font-black text-white mb-2 tracking-tight">Currently on Break</h2>
+                        <p className="text-white/80 mb-8 text-sm leading-relaxed">Relax your mind. Your break started at <span className="font-bold">{breakStartTime?.toLocaleTimeString()}</span>. The dashboard is paused.</p>
+                        <Button
+                            onClick={() => handleBreak(false)}
                             disabled={breakLoading}
-                            className="
-          px-8 py-3 rounded-full
-          text-white font-semibold
-          bg-[#0000cc]
-          transition-all
-        "
+                            className="bg-[#0000cc] hover:bg-[#0000cc]/90 text-white rounded-2xl h-14 px-10 font-black shadow-2xl w-full flex items-center justify-center"
                         >
-                            {breakLoading ? "Resuming..." : "Continue Working"}
-                        </button>
+                            {breakLoading ? (
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                            ) : (
+                                "Continue Working"
+                            )}
+                        </Button>
                     </div>
                 </div>
             )}
-
         </Layout>
     );
 }

@@ -17,6 +17,7 @@ import HrmManagerDashboard from "./pages/ProjectManager/hrmDashboardManager";
 import MainDashboard from "./pages/MainManager/mainDashboard";
 import { AuthProvider } from "./pages/AuthContext";
 import AssignmentDashboard from "./pages/MainManager/EmployeeAssignment";
+import KanbanBoard from "./pages/ProjectManager/KanbanBoard";
 
 const queryClient = new QueryClient();
 
@@ -42,6 +43,7 @@ const App = () => (
             <Route path="/operator" element={<OperatorDashboard />} />
             <Route path="/project_manager/employee-assignment" element={<AssignmentDashboard />} />
             <Route path="/timesheet" element={<EmployeeTaskTimeline />} />
+            <Route path="/kanbanBoard" element={<KanbanBoard />} />
             <Route path="/operator/hrm" element={<HrmDashboard />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

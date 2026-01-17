@@ -10,7 +10,8 @@ import {
   Clock,
   PersonStanding,
   Menu, 
-  X, 
+  X,
+  KanbanIcon, 
 } from "lucide-react";
 import { useAuth } from "@/pages/AuthContext";
 
@@ -56,6 +57,7 @@ export const Layout = ({ children }: LayoutProps) => {
     if (role === "manager") {
         return [
           ...common,
+          { icon: KanbanIcon, label: "Kanban Board", path: "/kanbanBoard" },
           { icon: Users, label: "Employees", path: "/tasks" },
           { icon: Clock, label: "My Task", path: "/timesheet" },
           { icon: BarChart3, label: "Performance", path: "/performance" },
@@ -67,6 +69,7 @@ export const Layout = ({ children }: LayoutProps) => {
     if (role === "project_manager") {
         return [
           ...common,
+          { icon: KanbanIcon, label: "Kanban Board", path: "/kanbanBoard" },
           { icon: Users, label: "Managers", path: "/tasks" },
           { icon: BarChart3, label: "Performance", path: "/performance" },
           { icon: PersonStanding, label: "Employee Assign", path: "/project_manager/employee-assignment" },

@@ -51,7 +51,8 @@ model User {
 
   ExternalIdentity ExternalIdentity[]
   taskWorkLogs     TaskWorkLog[]
-  attendances      UserAttendance[] @relation("UserAttendances")
+  attendances      UserAttendance[]   @relation("UserAttendances")
+  kanbanIssuesCreated KanbanIssue[] @relation("KanbanIssuesCreatedBy")
 }
 
 model Employee {
@@ -79,7 +80,7 @@ model Task {
 
   fileUrl_manager  String?
   fileUrl_operator String?
-  isDeleted Boolean @default(false)
+  isDeleted        Boolean @default(false)
   // relations
   createdById      String?
   createdBy        User?   @relation("TasksCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -144,24 +145,23 @@ model ExternalIdentity {
   createdAt DateTime @default(now())
 }
 
-
 model UserAttendance {
-  id        String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  userId    String
-  user      User     @relation("UserAttendances", fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation("UserAttendances", fields: [userId], references: [id], onDelete: Cascade)
 
   // 📅 Day-based tracking (VERY important)
-  workDate  DateTime  @db.Date // store date at 00:00:00 (server timezone)
+  workDate DateTime @db.Date // store date at 00:00:00 (server timezone)
 
   // ⏱ Core times
   loginTime  DateTime
   logoutTime DateTime?
 
   // 🧘 Break handling
-  breakStartTime DateTime?
-  breakEndTime   DateTime?
-  totalBreakMinutes Int @default(0)
+  breakStartTime    DateTime?
+  breakEndTime      DateTime?
+  totalBreakMinutes Int       @default(0)
 
   // 🧮 Calculated fields (optional but useful)
   totalWorkingMinutes Int? // excluding breaks
@@ -180,15 +180,64 @@ model UserAttendance {
 }
 
 model BreakLog {
-  id           String   @id @default(cuid())
+  id String @id @default(cuid())
 
   attendanceId String
   attendance   UserAttendance @relation("AttendanceBreakLogs", fields: [attendanceId], references: [id], onDelete: Cascade)
 
-  breakStart   DateTime
-  breakEnd     DateTime?
+  breakStart DateTime
+  breakEnd   DateTime?
 
   createdAt DateTime @default(now())
 
   @@index([attendanceId])
 }
+
+model KanbanBoard {
+  id        String         @id @default(cuid())
+  name      String
+
+  // 🔑 GLOBAL BOARD (one per org / project)
+  scope     String         @default("GLOBAL") // or projectId later
+
+  columns   KanbanColumn[]
+  createdAt DateTime       @default(now())
+}
+
+
+
+model KanbanColumn {
+  id        String        @id @default(cuid())
+  title     String
+  order     Int
+  boardId  String
+  board    KanbanBoard   @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  issues   KanbanIssue[]
+  createdAt DateTime     @default(now())
+
+  @@index([boardId])
+}
+
+
+model KanbanIssue {
+  id        String   @id @default(cuid())
+
+  title     String
+  priority  TaskPriority @default(MEDIUM)
+  estimate  String?
+  assigneeName String?
+
+  columnId String
+  column   KanbanColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+
+  createdBy String
+  creator   User   @relation("KanbanIssuesCreatedBy", fields: [createdBy], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([columnId])
+}
+
+
+

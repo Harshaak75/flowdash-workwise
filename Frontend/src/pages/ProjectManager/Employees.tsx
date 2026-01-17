@@ -548,8 +548,8 @@ const TaskCommentPanel = ({
             >
               <div
                 className={`max-w-[85%] sm:max-w-[75%] px-3 py-2 rounded-2xl text-xs sm:text-sm shadow-sm relative ${isOwnRole
-                    ? "bg-blue-600 text-white rounded-br-none"
-                    : "bg-gray-200 text-gray-800 rounded-bl-none"
+                  ? "bg-blue-600 text-white rounded-br-none"
+                  : "bg-gray-200 text-gray-800 rounded-bl-none"
                   }`}
               >
                 <p className="break-words">{c.content}</p>
@@ -978,19 +978,27 @@ export function EmployeeManagerDashboard() {
     // ... fetch logic
     setLoading(true);
     try {
-      const { data }: any = await axios.get<EmployeeResponse>(
+      const { data } = await axios.get<EmployeeResponse>(
         `${API_BASE_URL}/employees/employees`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-      setEmployees(data.employees);
+
+      // Map through employees and filter their task arrays
+      const employeesWithActiveTasks = data.employees.map((employee: any) => ({
+        ...employee,
+        tasks: employee.tasks.filter((task: any) => task.status !== "Done")
+      }));
+
+      console.log("Employees with filtered active tasks: ", employeesWithActiveTasks);
+
+      // Set the state with the filtered data
+      setEmployees(employeesWithActiveTasks);
       setTaskCompletedCount(data.TaskCompletedCount);
-    } catch (err) {
-      console.error(err);
-      setError(
-        "Failed to load employee data. Check server connection or token."
-      );
+
+    } catch (error) {
+      console.error("Error fetching employees:", error);
     } finally {
       setLoading(false);
     }
@@ -1063,9 +1071,6 @@ export function EmployeeManagerDashboard() {
             },
           }
         );
-        // const completed = res.data.tasks.filter(
-        //   (t: Task) => t.status === "DONE"
-        // );
         setTasks(res.data.tasks || []);
       } catch (err) {
         console.error("Failed to fetch tasks", err);
@@ -1170,65 +1175,6 @@ export function EmployeeManagerDashboard() {
       </CardContent>
     );
   };
-
-  // Create Task Logic (omitted for brevity)
-  // const handleCreateTask = async () => {
-  //   // ... create task logic
-  //   if (
-  //     !form.title.trim() ||
-  //     !form.assigneeEmployeeId ||
-  //     !form.dueDate ||
-  //     !form.assignedHours
-  //   ) {
-  //     toast({
-  //       title: "Error",
-  //       description:
-  //         "Task Title, Assignee, Due Date, and Assigned Hours are required!",
-  //       variant: "destructive",
-  //     });
-  //     return;
-  //   }
-
-  //   setIsCreating(true);
-
-  //   try {
-  //     const formData = new FormData();
-  //     formData.append("title", form.title);
-  //     if (form.notes) formData.append("notes", form.notes);
-  //     if (form.dueDate) formData.append("dueDate", form.dueDate);
-  //     formData.append("priority", form.priority);
-  //     if (form.assignedHours)
-  //       formData.append("assignedHours", form.assignedHours);
-  //     formData.append("assigneeEmployeeId", form.assigneeEmployeeId);
-  //     if (form.file) formData.append("file", form.file);
-
-  //     await axios.post(`${API_BASE_URL}/tasks/create`, formData, {
-  //       headers: {
-  //         Authorization: `Bearer ${token}`,
-  //         "Content-Type": "multipart/form-data",
-  //       },
-  //     });
-
-  //     toast({
-  //       title: "Task Created Successfully",
-  //       description: `Task has been assigned successfully.`,
-  //     });
-  //     setIsDialogOpen(false);
-  //     resetForm();
-  //     await fetchEmployees();
-  //   } catch (err: any) {
-  //     console.error(err);
-  //     const errorMessage =
-  //       err.response?.data?.error || "An unknown error occurred.";
-  //     toast({
-  //       title: "Error Creating Task",
-  //       description: `Failed to assign task: ${errorMessage}`,
-  //       variant: "destructive",
-  //     });
-  //   } finally {
-  //     setIsCreating(false);
-  //   }
-  // };
 
   const handleSubmitTask = async () => {
     const today = new Date().toISOString().split("T")[0];
@@ -1563,24 +1509,24 @@ export function EmployeeManagerDashboard() {
                 <div
                   key={emp.id}
                   className={`p-3 rounded-lg cursor-pointer flex items-center justify-between transition-all duration-150 text-sm ${selectedEmployee?.id === emp.id
-                      ? "bg-[#0000cc] text-white shadow-md"
-                      : "hover:bg-gray-100 border border-gray-200"
+                    ? "bg-[#0000cc] text-white shadow-md"
+                    : "hover:bg-gray-100 border border-gray-200"
                     }`}
                   onClick={() => setSelectedEmployee(emp)}
                 >
                   <div className="flex items-center gap-3">
                     <User
                       className={`h-4 w-4 ${selectedEmployee?.id === emp.id
-                          ? "text-red-500"
-                          : "text-[#0000cc]"
+                        ? "text-red-500"
+                        : "text-[#0000cc]"
                         }`}
                     />
                     <div>
                       <h4 className="font-semibold leading-none">{emp.name}</h4>
                       <p
                         className={`text-xs ${selectedEmployee?.id === emp.id
-                            ? "text-white/80"
-                            : "text-gray-500"
+                          ? "text-white/80"
+                          : "text-gray-500"
                           }`}
                       >
                         {emp.role}
