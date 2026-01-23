@@ -138,6 +138,7 @@ const TaskTimelineView = ({ role }: { role: any }) => {
     try {
       const token = localStorage.getItem("token");
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+      console.log("the current role: ", role)
       const res = role === "OPERATOR"
         ? await axios.get(`${API_BASE_URL}/tasks/EmployeeTasks`)
         : await axios.get(`${API_BASE_URL}/projectManager/ManagerTasks`);
@@ -488,8 +489,15 @@ export default function EmployeeTaskTimeline() {
   const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
-    setRole(localStorage.getItem("userRole") || "OPERATOR");
+    const storedRole = localStorage.getItem("userRole");
+    if (storedRole) {
+      setRole(storedRole);
+    }
   }, []);
+
+  if (!role) {
+    return <div>Loading...</div>; // or skeleton
+  }
 
   return (
     <Layout>
@@ -535,8 +543,8 @@ const CompletedCalendarView = () => {
         const res = await axios.get(`${API_BASE_URL}/tasks/EmployeeTasks`);
         // Filter for tasks with status DONE
         setTasks(res.data.tasks.filter((t: Task) => t.status === "DONE"));
-      } catch (err) { 
-        console.error(err); 
+      } catch (err) {
+        console.error(err);
       }
       setLoading(false);
     };

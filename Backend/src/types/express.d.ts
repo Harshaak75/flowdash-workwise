@@ -5,6 +5,7 @@ export type JWTPayload = {
   id: string;
   role: "MANAGER" | "OPERATOR" | "PROJECT_MANAGER";
   email: string;
+  tenantId: string;
 };
 
 // Augment the core Express Request type

@@ -33,6 +33,7 @@ import {
     Cell,
 } from "recharts";
 import { useAuth } from "../AuthContext";
+import axios from "axios";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const PRIMARY_COLOR = "#0000cc";
@@ -65,6 +66,7 @@ export default function ManagerDashboard() {
     const [loading, setLoading] = useState(true);
     const [dashboardData, setDashboardData] = useState<any>(null);
     const [tasks, setTasks] = useState<any[]>([]);
+    const [stats, setStats] = useState<any>(null);
     const [now, setNow] = useState(new Date());
 
     const [workState, setWorkState] = useState<"WORKING" | "ON_BREAK">("WORKING");
@@ -72,6 +74,14 @@ export default function ManagerDashboard() {
     const [breakLoading, setBreakLoading] = useState(false);
 
     const { loginTime, setLoginTime } = useAuth();
+
+    useEffect(() => {
+        axios
+            .get(`${API_BASE_URL}/tasks/dashboard/manager`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            })
+            .then(res => setStats(res.data.cards));
+    }, []);
 
     useEffect(() => {
         const timer = setInterval(() => setNow(new Date()), 60000);
@@ -191,10 +201,10 @@ export default function ManagerDashboard() {
 
                 {/* STATS */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <StatsCard title="Total Tasks" value="25" icon={FolderKanban} color="primary" trend="15 completed" trendUp={true} />
-                    <StatsCard title="In Progress" value="1" icon={Clock} color="warning" trend="8 pending" />
-                    <StatsCard title="Today Assigned" value="16h" icon={Target} color="primary" />
-                    <StatsCard title="Efficiency" value="1%" icon={TrendingUp} color="success" trend="Within estimate" />
+                    <StatsCard title="Total Tasks" value={stats?.totalTasks} icon={FolderKanban} color="primary" trend="15 completed" trendUp={true} />
+                    <StatsCard title="In Progress" value={stats?.inProgressTasks} icon={Clock} color="warning" trend="8 pending" />
+                    <StatsCard title="Today Assigned" value={stats?.todayAssignedHours} icon={Target} color="primary" />
+                    <StatsCard title="Efficiency" value={stats?.completionRate + "%"} icon={TrendingUp} color="success" trend="Within estimate" />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">

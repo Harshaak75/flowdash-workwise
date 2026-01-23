@@ -150,27 +150,48 @@ export default function AssignmentDashboard() {
   const MAX_TEAM_CAPACITY = 10;
 
   // Transform functions
-  const transformManagerData = (apiManagers) => {
-    return apiManagers.map((manager) => {
-      const rawEmployees = manager.user.ManagerEmployees || [];
-      const teamMembers = rawEmployees.map((member) => ({
-        id: member.id,
-        name: member.name,
-        role: member.roleTitle,
-        isNew: false,
-      }));
-      return {
-        id: manager.user.id,
-        name: manager.name,
-        role: manager.roleTitle,
-        department: manager.department,
-        teamSize: teamMembers.length,
-        maxCapacity: MAX_TEAM_CAPACITY,
-        teamMembers: teamMembers,
-        isExpanded: false,
-      };
-    });
-  };
+  // const transformManagerData = (apiManagers) => {
+  //   return apiManagers.map((manager) => {
+  //     const rawEmployees = manager.user.ManagerEmployees || [];
+  //     const teamMembers = rawEmployees.map((member) => ({
+  //       id: member.id,
+  //       name: member.name,
+  //       role: member.roleTitle,
+  //       isNew: false,
+  //     }));
+  //     return {
+  //       id: manager.user.id,
+  //       name: manager.name,
+  //       role: manager.roleTitle,
+  //       department: manager.department,
+  //       teamSize: teamMembers.length,
+  //       maxCapacity: MAX_TEAM_CAPACITY,
+  //       teamMembers: teamMembers,
+  //       isExpanded: false,
+  //     };
+  //   });
+  // };
+
+const transformManagerData = (apiManagers) => {
+  return apiManagers.map((manager) => ({
+    id: manager.id,                 // manager userId
+    name: manager.name,
+    role: "MANAGER",
+    department: manager.department,
+    teamSize: manager.teamSize ?? manager.teamMembers.length,
+    maxCapacity: MAX_TEAM_CAPACITY,
+    teamMembers: manager.teamMembers.map((member) => ({
+      id: member.id,
+      name: member.name,
+      role: "EMPLOYEE",
+      department: member.department,
+      isNew: false,
+    })),
+    isExpanded: false,
+  }));
+};
+
+
 
   const transformNewJoinerData = (apiNewJoiners) => {
     return apiNewJoiners.map((emp) => ({
@@ -181,32 +202,34 @@ export default function AssignmentDashboard() {
     }));
   };
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [managersRes, newJoinersRes] = await Promise.all([
-        axios.get(`${backendUrl}/projectManager/Manager_employee_list`, {
-          headers: { Authorization: `Bearer ${token}` },
-          withCredentials: true,
-        }),
-        axios.get(`${backendUrl}/projectManager/employee-assign/new-joiners`, {
-          headers: { Authorization: `Bearer ${token}` },
-          withCredentials: true,
-        }),
-      ]);
+const fetchData = async () => {
+  setLoading(true);
+  try {
+    const [managersRes, newJoinersRes] = await Promise.all([
+      axios.get(`${backendUrl}/projectManager/managers`, {
+        headers: { Authorization: `Bearer ${token}` },
+        withCredentials: true,
+      }),
+      axios.get(`${backendUrl}/projectManager/employee-assign/new-joiners`, {
+        headers: { Authorization: `Bearer ${token}` },
+        withCredentials: true,
+      }),
+    ]);
 
-      if (managersRes.data?.managers) {
-        setManagers(transformManagerData(managersRes.data.managers));
-      }
-      if (newJoinersRes.data?.newJoiners) {
-        setNewEmployees(transformNewJoinerData(newJoinersRes.data.newJoiners));
-      }
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error);
-    } finally {
-      setLoading(false);
+    if (managersRes.data?.managers) {
+      setManagers(transformManagerData(managersRes.data.managers));
     }
-  };
+
+    if (newJoinersRes.data?.newJoiners) {
+      setNewEmployees(transformNewJoinerData(newJoinersRes.data.newJoiners));
+    }
+  } catch (error) {
+    console.error("Error fetching dashboard data:", error);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   useEffect(() => {
     fetchData();

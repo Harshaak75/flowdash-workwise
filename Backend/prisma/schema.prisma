@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -14,10 +8,189 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model User {
+  id                  String             @id @default(cuid())
+  email               String             
+  password            String
+  role                Role
+  tenantId            String
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  ManagerEmployees    Employee[]         @relation("ManagerEmployees")
+  Employee            Employee?
+  ExternalIdentity    ExternalIdentity[]
+  kanbanIssuesCreated KanbanIssue[]      @relation("KanbanIssuesCreatedBy")
+  tasksAssigned       Task[]             @relation("TasksAssignedTo")
+  tasksCreated        Task[]             @relation("TasksCreatedBy")
+  TaskComment         TaskComment[]
+  taskWorkLogs        TaskWorkLog[]
+  attendances         UserAttendance[]   @relation("UserAttendances")
+
+  @@unique([email, tenantId])
+}
+
+model Employee {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  tenantId   String
+  name       String
+  roleTitle  String
+  department String?
+  status     String   @default("Active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  managerId  String?
+  manager    User?    @relation("ManagerEmployees", fields: [managerId], references: [id])
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Task {
+  id               String        @id @default(cuid())
+  title            String
+  tenantId         String
+  notes            String?
+  dueDate          DateTime?
+  priority         TaskPriority  @default(MEDIUM)
+  status           TaskStatus    @default(TODO)
+  assignedHours    Int?
+  createdById      String?
+  assigneeId       String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  fileUrl_manager  String?
+  fileUrl_operator String?
+  isDeleted        Boolean       @default(false)
+  assignee         User?         @relation("TasksAssignedTo", fields: [assigneeId], references: [id])
+  createdBy        User?         @relation("TasksCreatedBy", fields: [createdById], references: [id])
+  TaskComment      TaskComment[]
+  taskWorkLogs     TaskWorkLog[]
+
+  @@index([assigneeId])
+  @@index([createdById])
+  @@index([status])
+  @@index([priority])
+  @@index([tenantId])
+  @@index([tenantId, assigneeId])
+}
+
+model TaskWorkLog {
+  id        String    @id @default(cuid())
+  tenantId  String?
+  taskId    String
+  userId    String
+  startTime DateTime
+  endTime   DateTime?
+  createdAt DateTime  @default(now())
+  task      Task      @relation(fields: [taskId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+}
+
+model TaskComment {
+  id             String   @id @default(cuid())
+  taskId         String
+  authorId       String
+  tenantId       String?
+  content        String
+  seenByAssignee Boolean  @default(false)
+  seenByManager  Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  author         User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  task           Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([authorId])
+}
+
+model ExternalIdentity {
+  id        String   @id @default(cuid())
+  provider  String? // "keycloak"
+  subject   String  // Keycloak `sub`
+  email     String
+  tenantId  String
+  userId    String?
+
+  user      User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([email, tenantId])
+  @@unique([provider, subject, tenantId])
+}
+
+model UserAttendance {
+  id                  String     @id @default(cuid())
+  userId              String
+  workDate            DateTime   @db.Date
+  loginTime           DateTime
+  logoutTime          DateTime?
+  breakStartTime      DateTime?
+  breakEndTime        DateTime?
+  totalBreakMinutes   Int        @default(0)
+  totalWorkingMinutes Int?
+  isActiveSession     Boolean    @default(true)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  breakLogs           BreakLog[] @relation("AttendanceBreakLogs")
+  user                User       @relation("UserAttendances", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workDate])
+  @@index([userId])
+  @@index([workDate])
+}
+
+model BreakLog {
+  id           String         @id @default(cuid())
+  attendanceId String
+  breakStart   DateTime
+  breakEnd     DateTime?
+  createdAt    DateTime       @default(now())
+  attendance   UserAttendance @relation("AttendanceBreakLogs", fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  @@index([attendanceId])
+}
+
+model KanbanBoard {
+  id        String         @id @default(cuid())
+  name      String
+  tenantId  String
+  scope     String         @default("GLOBAL")
+  createdAt DateTime       @default(now())
+  columns   KanbanColumn[]
+}
+
+model KanbanColumn {
+  id        String        @id @default(cuid())
+  title     String
+  order     Int
+  boardId   String
+  createdAt DateTime      @default(now())
+  board     KanbanBoard   @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  issues    KanbanIssue[]
+
+  @@index([boardId])
+}
+
+model KanbanIssue {
+  id           String       @id @default(cuid())
+  title        String
+  priority     TaskPriority @default(MEDIUM)
+  tenantId     String
+  estimate     String?
+  assigneeName String?
+  columnId     String
+  createdBy    String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  column       KanbanColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  creator      User         @relation("KanbanIssuesCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([columnId])
+}
+
 enum Role {
-  PROJECT_MANAGER
   MANAGER
   OPERATOR
+  PROJECT_MANAGER
 }
 
 enum TaskStatus {
@@ -32,212 +205,3 @@ enum TaskPriority {
   MEDIUM
   LOW
 }
-
-model User {
-  id               String        @id @default(cuid())
-  email            String        @unique
-  password         String
-  role             Role
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  // 1:1 optional employee profile (only for operators you show in "employees")
-  ManagerEmployees Employee[]    @relation("ManagerEmployees")
-  // tasks created by (if manager)
-  tasksCreated     Task[]        @relation("TasksCreatedBy")
-  // tasks assigned to (if operator)
-  tasksAssigned    Task[]        @relation("TasksAssignedTo", fields: [], references: [])
-  Employee         Employee[]
-  TaskComment      TaskComment[]
-
-  ExternalIdentity ExternalIdentity[]
-  taskWorkLogs     TaskWorkLog[]
-  attendances      UserAttendance[]   @relation("UserAttendances")
-  kanbanIssuesCreated KanbanIssue[] @relation("KanbanIssuesCreatedBy")
-}
-
-model Employee {
-  id         String   @id @default(cuid())
-  userId     String   @unique
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name       String
-  managerId  String?
-  manager    User?    @relation("ManagerEmployees", fields: [managerId], references: [id], onDelete: SetNull)
-  roleTitle  String // "Senior Developer", "UI/UX Designer"
-  department String? // "Engineering" / "Design" / "Operations"
-  status     String   @default("Active") // Active / On Leave
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-}
-
-model Task {
-  id            String       @id @default(cuid())
-  title         String
-  notes         String?
-  dueDate       DateTime?
-  priority      TaskPriority @default(MEDIUM)
-  status        TaskStatus   @default(TODO)
-  assignedHours Int? // from your dialog
-
-  fileUrl_manager  String?
-  fileUrl_operator String?
-  isDeleted        Boolean @default(false)
-  // relations
-  createdById      String?
-  createdBy        User?   @relation("TasksCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-
-  assigneeId String?
-  assignee   User?   @relation("TasksAssignedTo", fields: [assigneeId], references: [id], onDelete: SetNull)
-
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  TaskComment  TaskComment[]
-  taskWorkLogs TaskWorkLog[]
-
-  @@index([assigneeId])
-  @@index([createdById])
-  @@index([status])
-  @@index([priority])
-}
-
-model TaskWorkLog {
-  id     String @id @default(cuid())
-  taskId String
-  task   Task   @relation(fields: [taskId], references: [id])
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
-
-  startTime DateTime
-  endTime   DateTime?
-
-  createdAt DateTime @default(now())
-}
-
-model TaskComment {
-  id String @id @default(cuid())
-
-  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  taskId String
-
-  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  authorId String
-
-  content String
-
-  // Track whether the comment has been seen by each role
-  seenByAssignee Boolean @default(false)
-  seenByManager  Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([taskId])
-  @@index([authorId])
-}
-
-model ExternalIdentity {
-  id        String   @id @default(cuid())
-  provider  String // e.g. "keycloak"
-  subject   String // The Keycloak 'sub' claim (unique per user)
-  email     String   @unique
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-}
-
-model UserAttendance {
-  id String @id @default(cuid())
-
-  userId String
-  user   User   @relation("UserAttendances", fields: [userId], references: [id], onDelete: Cascade)
-
-  // 📅 Day-based tracking (VERY important)
-  workDate DateTime @db.Date // store date at 00:00:00 (server timezone)
-
-  // ⏱ Core times
-  loginTime  DateTime
-  logoutTime DateTime?
-
-  // 🧘 Break handling
-  breakStartTime    DateTime?
-  breakEndTime      DateTime?
-  totalBreakMinutes Int       @default(0)
-
-  // 🧮 Calculated fields (optional but useful)
-  totalWorkingMinutes Int? // excluding breaks
-
-  // 🔐 Safety flags
-  isActiveSession Boolean @default(true) // false after logout
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  breakLogs BreakLog[] @relation("AttendanceBreakLogs")
-
-  @@unique([userId, workDate]) // ONE attendance per user per day
-  @@index([userId])
-  @@index([workDate])
-}
-
-model BreakLog {
-  id String @id @default(cuid())
-
-  attendanceId String
-  attendance   UserAttendance @relation("AttendanceBreakLogs", fields: [attendanceId], references: [id], onDelete: Cascade)
-
-  breakStart DateTime
-  breakEnd   DateTime?
-
-  createdAt DateTime @default(now())
-
-  @@index([attendanceId])
-}
-
-model KanbanBoard {
-  id        String         @id @default(cuid())
-  name      String
-
-  // 🔑 GLOBAL BOARD (one per org / project)
-  scope     String         @default("GLOBAL") // or projectId later
-
-  columns   KanbanColumn[]
-  createdAt DateTime       @default(now())
-}
-
-
-
-model KanbanColumn {
-  id        String        @id @default(cuid())
-  title     String
-  order     Int
-  boardId  String
-  board    KanbanBoard   @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  issues   KanbanIssue[]
-  createdAt DateTime     @default(now())
-
-  @@index([boardId])
-}
-
-
-model KanbanIssue {
-  id        String   @id @default(cuid())
-
-  title     String
-  priority  TaskPriority @default(MEDIUM)
-  estimate  String?
-  assigneeName String?
-
-  columnId String
-  column   KanbanColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
-
-  createdBy String
-  creator   User   @relation("KanbanIssuesCreatedBy", fields: [createdBy], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([columnId])
-}
-
-
-

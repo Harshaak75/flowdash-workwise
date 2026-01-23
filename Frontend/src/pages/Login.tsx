@@ -16,6 +16,7 @@ export default function Login() {
   const [role, setRole] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [tenantCode, setTenantCode] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -26,7 +27,7 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!email || !password) {
+    if (!email || !password || !tenantCode) {
       toast({
         title: "Error",
         description: "Please enter email and password",
@@ -43,7 +44,7 @@ export default function Login() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, tenantCode }),
         credentials: "include",
       });
 
@@ -145,6 +146,19 @@ export default function Login() {
                   })}
                 </div>
               </div> */}
+
+              <div className="space-y-2">
+                <Label htmlFor="tenantCode" className="text-gray-700">Tenat Code</Label>
+                <Input
+                  id="tenantCode"
+                  type="text"
+                  placeholder="Enter Tenant Code"
+                  value={tenantCode}
+                  onChange={(e) => setTenantCode(e.target.value)}
+                  autoComplete="email"
+                  className="focus:border-[#0000cc] border-gray-30o"
+                />
+              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-gray-700">Email</Label>
