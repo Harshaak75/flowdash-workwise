@@ -33,13 +33,30 @@ export async function requireAuth(req, res, next) {
         if (err) return res.status(401).json({ error: "Invalid token" });
 
         const email = decoded?.email;
+        const tenantId = decoded.tenantId;
         const roles = decoded?.realm_access?.roles || [];
 
-        let user = await prisma.user.findUnique({ where: { email } });
+
+        let user = await prisma.user.findUnique({
+          where: {
+            email_tenantId: {
+              email,
+              tenantId,
+            },
+          },
+        });
+
+        // ✅ FIX 2: create user with tenantId
         if (!user) {
           const role = roles.includes("MANAGER") ? "MANAGER" : "OPERATOR";
+
           user = await prisma.user.create({
-            data: { email, password: "", role },
+            data: {
+              email,
+              password: "",
+              role,
+              tenantId,
+            },
           });
         }
 
