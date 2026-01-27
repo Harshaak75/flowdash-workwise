@@ -147,7 +147,7 @@ export default function AssignmentDashboard() {
 
   const PRIMARY_COLOR = "#0000cc";
   const ACCENT_RED = "#D70707";
-  const MAX_TEAM_CAPACITY = 10;
+  const MAX_TEAM_CAPACITY = 25;
 
   // Transform functions
   // const transformManagerData = (apiManagers) => {
