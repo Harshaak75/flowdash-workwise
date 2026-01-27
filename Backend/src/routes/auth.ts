@@ -14,6 +14,16 @@ const getTodayDate = () => {
   return now;
 };
 
+const INTERNAL_KEYCLOAK_HOST = "keycloak:8080";
+const EXTERNAL_KEYCLOAK_HOST = "194.163.139.103:8090";
+
+function replaceKeycloakHost(issuerUrl: string): string {
+  return issuerUrl.replace(
+    INTERNAL_KEYCLOAK_HOST,
+    EXTERNAL_KEYCLOAK_HOST
+  );
+}
+
 // router.post("/register", async (req, res) => {
 //   try {
 //     const { email, password, role, name, roleTitle, department } = req.body;
@@ -210,13 +220,20 @@ router.post("/login", async (req, res) => {
     );
 
 
-    const {
+    let {
       issuerUrl,
       clientId,
       clientSecret,
       tokenUrl,
       tenantId,
     }: any = hrmRes.data;
+
+    console.log("hrmRes.data", hrmRes.data);
+
+    issuerUrl = replaceKeycloakHost(issuerUrl);
+    tokenUrl = replaceKeycloakHost(tokenUrl);
+    console.log("issuerUrl", issuerUrl);
+    console.log("tokenUrl", tokenUrl);
 
     if (!tenantId || !issuerUrl || !clientId || !clientSecret || !tokenUrl) {
       return res.status(400).json({ error: "Invalid tenant configuration" });
@@ -362,6 +379,13 @@ router.post("/login", async (req, res) => {
       maxAge: kc.expires_in * 1000,
     });
 
+    res.cookie("keycloak_refresh_token", kc.refresh_token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      maxAge: kc.refresh_expires_in * 1000,
+    });
+
     res.json({
       token: appToken,
       role: user.role,
@@ -376,15 +400,16 @@ router.post("/login", async (req, res) => {
 });
 
 
-router.post("/logout", async (req, res) => {
+router.post("/logout", auth, async (req, res) => {
   try {
     const refreshToken = req.cookies["keycloak_refresh_token"];
+    const tenantId = req.user?.tenantId;
 
     if (!refreshToken) {
       return res.status(400).json({ error: "No refresh token found" });
     }
 
-    const logoutUrl = `${process.env.KEYCLOAK_BASE_URL}/realms/${process.env.KEYCLOAK_REALM}/protocol/openid-connect/logout`;
+    const logoutUrl = `${process.env.KEYCLOAK_BASE_URL}/realms/${tenantId}/protocol/openid-connect/logout`;
 
     const body = new URLSearchParams({
       client_id: process.env.KEYCLOAK_PROVISIONER_CLIENT_ID!,
@@ -392,9 +417,15 @@ router.post("/logout", async (req, res) => {
       refresh_token: refreshToken,
     });
 
-    await axios.post(logoutUrl, body, {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    });
+    try {
+      await axios.post(logoutUrl, body, {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      });
+    } catch (error) {
+      console.log("error from keycloak: ", error)
+    }
+
+
 
     //  Remove cookies
     res.clearCookie("keycloak_token", {
