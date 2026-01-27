@@ -66,6 +66,9 @@ export const Layout = ({ children }: LayoutProps) => {
         method: "POST",
         credentials: "include",
       });
+      localStorage.removeItem("token");
+      localStorage.removeItem("userEmail")
+      localStorage.removeItem("userRole");
     } catch (err) {
       console.error("Logout failed:", err);
       // Even if backend fails, we still log out locally

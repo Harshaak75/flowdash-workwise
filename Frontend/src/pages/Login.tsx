@@ -27,10 +27,26 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!email || !password || !tenantCode) {
+    if (!email) {
       toast({
         title: "Error",
-        description: "Please enter email and password",
+        description: "Please enter email",
+        variant: "destructive",
+      });
+      return;
+    }
+    else if(!password){
+      toast({
+        title: "Error",
+        description: "Please enter password",
+        variant: "destructive",
+      });
+      return;
+    }
+    else if(!tenantCode){
+      toast({
+        title: "Error",
+        description: "Please enter tenant code",
         variant: "destructive",
       });
       return;
