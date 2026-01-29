@@ -592,12 +592,24 @@ router.get("/go-to-hrm", ensureFreshKeycloakToken, async (req, res) => {
       return res.status(403).json({ error: "Tenant role missing" });
     }
 
+    const normalizeTenant = (value: string) =>
+      value
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " "); // keep space, collapse extras
+
+
     //TODO: in future change this to the database -> TenantCode
+    // const TENANT_ROLE_TO_CODE: Record<string, string> = {
+    //   TENANT_DOTSPEAK: "DotSpeak_NGO-11-25-002"
+    // };
+
     const TENANT_ROLE_TO_CODE: Record<string, string> = {
-      TENANT_DOTSPEAK: "DotSpeak_NGO-11-25-002"
+      "tenant_dotspeak": "DotSpeak_NGO-11-25-002",
+      "tenant_aikya ventures": "aikyaVentures-19-26-003",
     };
 
-    const tenantCode = TENANT_ROLE_TO_CODE[tenantRole];
+    const tenantCode = TENANT_ROLE_TO_CODE[normalizeTenant(tenantRole)];
 
     if (!tenantCode) {
       return res.status(403).json({ error: "Tenant not mapped" });
