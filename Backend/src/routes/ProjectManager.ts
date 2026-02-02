@@ -34,22 +34,36 @@ router.get("/ManagerTasks", auth, async (req, res) => {
     }
 
     // 1️⃣ Fetch tasks CREATED BY this PM within SAME TENANT
+    // const tasks = await prisma.task.findMany({
+    //   where: {
+    //     createdById: userId,
+    //     tenantId,               // 🔐 CRITICAL MULTI-TENANT FILTER
+    //     isDeleted: false,
+    //   },
+    //   include: {
+    //     createdBy: {
+    //       select: { id: true, email: true, role: true },
+    //     },
+    //     assignee: {
+    //       select: { id: true, email: true },
+    //     },
+    //   },
+    //   orderBy: { dueDate: "asc" },
+    // });
+
     const tasks = await prisma.task.findMany({
       where: {
-        createdById: userId,
-        tenantId,               // 🔐 CRITICAL MULTI-TENANT FILTER
+        assigneeId: userId,  // ✅ FIX
+        tenantId,
         isDeleted: false,
       },
       include: {
-        createdBy: {
-          select: { id: true, email: true, role: true },
-        },
-        assignee: {
-          select: { id: true, email: true },
-        },
+        createdBy: { select: { id: true, email: true, role: true } },
+        assignee: { select: { id: true, email: true } },
       },
       orderBy: { dueDate: "asc" },
     });
+
 
     // 2️⃣ Map files from Supabase
     const tasksWithFiles = await Promise.all(

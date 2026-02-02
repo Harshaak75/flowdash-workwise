@@ -137,6 +137,7 @@ export default function ManagerDashboard() {
                 headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
             const data = await res.json();
+            
             if (start) {
                 setBreakStartTime(new Date(data.breakStartTime));
                 setWorkState("ON_BREAK");
@@ -179,7 +180,7 @@ export default function ManagerDashboard() {
                         <h1 className="text-3xl font-extrabold tracking-tight text-[#0000cc]">My Task Performance Dashboard</h1>
                         <p className="text-slate-500">
                             <span className="font-semibold text-lg">Good Evening 👋</span> <br />
-                            Task Management Hub • January 15, 2026
+                            Task Management Hub • {new Date().toLocaleDateString("en-US", { dateStyle: "long" })}
                         </p>
                     </div>
 
@@ -195,7 +196,7 @@ export default function ManagerDashboard() {
                                 "Take a Break"
                             )}
                         </Button>
-                        <p className="text-[12px] text-slate-400 font-medium pr-2">Logged in at: <span className="font-bold">3:49:43 PM</span></p>
+                        {loginTime && <p className="text-xs pr-3 text-slate-400">Logged in at: <span className="font-medium">{loginTime.toLocaleTimeString()}</span></p>}
                     </div>
                 </header>
 

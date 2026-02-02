@@ -155,6 +155,7 @@ export default function OperatorDashboard() {
         });
         if (!res.ok) return;
         const data = await res.json();
+        
         if (data.loginTime) setLoginTime(new Date(data.loginTime));
         if (data.onBreak) {
           setWorkState("ON_BREAK");

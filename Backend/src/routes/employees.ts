@@ -411,70 +411,74 @@ router.get(
         },
       });
 
-      const teamOverview = employees.map(async (emp: any) => {
-        const tasks = emp.user?.tasksAssigned || [];
-        const tasksCompleted = tasks.filter(
-          (t: any) => t.status === "DONE"
-        ).length;
+      const teamOverview = await Promise.all(
+        employees.map(async (emp: any) => {
+          const tasks = emp.user?.tasksAssigned || [];
+          const tasksCompleted = tasks.filter(
+            (t: any) => t.status === "DONE"
+          ).length;
 
-        const { from, to } = resolveDateRange(req.query);
+          const { from, to } = resolveDateRange(req.query);
 
-        const logs = await prisma.taskWorkLog.findMany({
-          where: {
-            userId: emp.user.id,
-            startTime: {
-              ...(from ? { gte: from } : {}),
-              ...(to ? { lte: to } : {}),
+          const logs = await prisma.taskWorkLog.findMany({
+            where: {
+              userId: emp.user.id,
+              startTime: {
+                ...(from ? { gte: from } : {}),
+                ...(to ? { lte: to } : {}),
+              },
+              task: { tenantId },
             },
-            task: { tenantId },
-          },
-        });
+          });
 
+          const totalActualMinutes = logs.reduce((sum, log) => {
+            if (!log.endTime) return sum;
+            return sum + (log.endTime.getTime() - log.startTime.getTime()) / 60000;
+          }, 0);
 
-        const totalActualMinutes = logs.reduce((sum, log) => {
-          if (!log.endTime) return sum; // 🚫 DO NOT PAY OPEN LOGS
-          return sum + (log.endTime.getTime() - log.startTime.getTime()) / 60000;
-        }, 0);
+          const workedDates = new Set(
+            logs
+              .filter(l => l.endTime)
+              .map(l => l.startTime.toISOString().split("T")[0])
+          );
 
-        const workedDates: any = new Set(
-          logs
-            .filter(l => l.endTime)
-            .map(l => l.startTime.toISOString().split("T")[0])
-        );
-
-        const breakMinutes = await prisma.userAttendance.aggregate({
-          _sum: { totalBreakMinutes: true },
-          where: {
-            userId: emp.user.id,
-            workDate: {
-              in: Array.from(workedDates).map((d: any) => new Date(d)),
+          const breakMinutes = await prisma.userAttendance.aggregate({
+            _sum: { totalBreakMinutes: true },
+            where: {
+              userId: emp.user.id,
+              workDate: {
+                in: Array.from(workedDates).map(d => new Date(d as string)),
+              },
             },
-          },
-        });
+          });
 
-        const netActualMinutes = subtractBreakMinutes(
-          totalActualMinutes,
-          breakMinutes._sum.totalBreakMinutes || 0
-        );
+          const netActualMinutes = subtractBreakMinutes(
+            totalActualMinutes,
+            breakMinutes._sum.totalBreakMinutes || 0
+          );
 
-        const totalHours = Math.round((netActualMinutes / 60) * 10) / 10;
+          const totalHours = Math.round((netActualMinutes / 60) * 10) / 10;
 
+          const efficiency =
+            tasks.length > 0
+              ? Math.round((tasksCompleted / tasks.length) * 100)
+              : 0;
 
-        const efficiency =
-          tasks.length > 0
-            ? Math.round((tasksCompleted / tasks.length) * 100)
-            : 0;
-
-        return {
-          id: emp.id,
-          name: emp.name,
-          role: emp.roleTitle,
-          status: emp.status,
-          tasksCompleted,
-          hoursLogged: totalHours,
-          efficiency,
-        };
-      });
+          return {
+            id: emp.id,
+            name: emp.name ?? "Unknown",
+            role: emp.roleTitle ?? "Staff",
+            status: emp.status,
+            tasksCompleted,
+            hoursLogged: totalHours,
+            efficiency,
+          };
+        })
+      );
+      const totalWeeklyHours = weeklyData.reduce(
+        (sum, d) => sum + d.hours,
+        0
+      );
 
       // ----------------------------
       // RESPONSE
@@ -482,6 +486,7 @@ router.get(
       res.json({
         totalEmployees,
         activeEmployees,
+        totalWeeklyHours,
         totalTasks,
         completionRate,
         weeklyData,

@@ -242,7 +242,7 @@ export default function ManagerDashboard() {
                 "We're having trouble loading the dashboard data right now. Please try refreshing the page."
               }
             </CardDescription>{" "}
-             
+
             <Button
               onClick={() => window.location.reload()}
               className="gap-2 bg-[#0000cc] hover:bg-[#0000cc]/90 text-white rounded-lg shadow-md"
@@ -263,6 +263,7 @@ export default function ManagerDashboard() {
     weeklyData,
     performanceData,
     teamOverview,
+    totalWeeklyHours,
   } = dashboardData;
 
   return (
@@ -350,7 +351,7 @@ export default function ManagerDashboard() {
           />
           <StatsCard
             title="Total Hours (Week)"
-            value={weeklyData.reduce((sum: number, d: any) => sum + d.hours, 0)}
+            value={totalWeeklyHours}
             icon={Clock}
             trend="Weekly logged hours"
             trendUp={true}
@@ -434,10 +435,10 @@ export default function ManagerDashboard() {
               Team Overview
             </h3>
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <Input
+              {/* <Input
                 placeholder="Search employees..."
                 className="w-full sm:w-64 border-gray-300"
-              />
+              /> */}
               <Select>
                 <SelectTrigger className="w-full sm:w-32">
                   <SelectValue placeholder="Status" />
@@ -460,10 +461,12 @@ export default function ManagerDashboard() {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-4 flex-1">
                     <div className="h-12 w-12 rounded-full bg-[#0000cc] flex items-center justify-center text-white font-semibold">
-                      {emp.name
+                      {(emp.name ?? "")
                         .split(" ")
+                        .filter(Boolean)
                         .map((n: string) => n[0])
-                        .join("")}
+                        .join("")
+                        .toUpperCase() || "?"}
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
