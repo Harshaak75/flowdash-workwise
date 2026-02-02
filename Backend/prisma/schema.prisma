@@ -53,6 +53,7 @@ model Task {
   priority         TaskPriority  @default(MEDIUM)
   status           TaskStatus    @default(TODO)
   assignedHours    Int?
+  completedAt      DateTime?
   createdById      String?
   assigneeId       String?
   createdAt        DateTime      @default(now())
@@ -78,11 +79,14 @@ model TaskWorkLog {
   tenantId  String?
   taskId    String
   userId    String
+  isAutoPaused Boolean @default(false)
   startTime DateTime
   endTime   DateTime?
   createdAt DateTime  @default(now())
   task      Task      @relation(fields: [taskId], references: [id])
   user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, endTime])
 }
 
 model TaskComment {

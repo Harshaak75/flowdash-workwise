@@ -448,6 +448,8 @@ router.post("/logout", auth, async (req, res) => {
     const today = getTodayDate();
     const now = new Date();
 
+
+
     const userId = req.user?.id;
 
     if (!userId) {
@@ -510,6 +512,22 @@ router.post("/logout", auth, async (req, res) => {
 
       console.log("✅ Attendance closed:", attendance.id);
     }
+
+    /* ---------------- TASK AUTO-PAUSE ON LOGOUT ---------------- */
+
+    await prisma.taskWorkLog.updateMany({
+      where: {
+        userId,
+        endTime: null, // only running tasks
+      },
+      data: {
+        endTime: now,
+        isAutoPaused: true,
+      },
+    });
+
+    console.log("⏸️ Active tasks auto-paused on logout");
+
 
 
     return res.json({ message: "Logged out successfully" });
@@ -608,6 +626,8 @@ router.get("/go-to-hrm", ensureFreshKeycloakToken, async (req, res) => {
       "tenant_dotspeak": "DotSpeak_NGO-11-25-002",
       "tenant_aikya ventures": "aikyaVentures-19-26-003",
     };
+
+    console.log("normalize: ", normalizeTenant(tenantRole));
 
     const tenantCode = TENANT_ROLE_TO_CODE[normalizeTenant(tenantRole)];
 

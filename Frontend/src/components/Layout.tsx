@@ -41,18 +41,19 @@ export const Layout = ({ children }: LayoutProps) => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutMessageIndex, setLogoutMessageIndex] = useState(0);
 
-  if (loading) return <div className="p-6">Loading...</div>;
-  if (!user) return <div className="p-6">Unauthorized</div>;
+
 
   useEffect(() => {
     if (!isLoggingOut) return;
-
     const interval = setInterval(() => {
       setLogoutMessageIndex((i) => (i + 1) % LOGOUT_MESSAGES.length);
     }, 1500);
 
     return () => clearInterval(interval);
   }, [isLoggingOut]);
+
+  if (loading) return <div className="p-6">Loading...</div>;
+  if (!user) return <div className="p-6">Unauthorized</div>;
 
   const role = user.role.toLowerCase();
   const handleLogout = async () => {

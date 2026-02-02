@@ -11,11 +11,60 @@ import {
   subDays,
   format,
   isSameDay,
+  startOfMonth,
+  subMonths,
+  endOfMonth,
 } from "date-fns";
 
 const router = Router();
 
 // GET all employees (manager)
+
+function subtractBreakMinutes(
+  workMinutes: number,
+  breakMinutes: number
+) {
+  return Math.max(0, workMinutes - breakMinutes);
+}
+
+function resolveDateRange(query: any) {
+  const now = new Date();
+
+  if (query.from && query.to) {
+    return {
+      from: new Date(query.from),
+      to: new Date(query.to),
+    };
+  }
+
+  switch (query.range) {
+    case "7d":
+      return { from: subDays(now, 7), to: now };
+
+    case "14d":
+      return { from: subDays(now, 14), to: now };
+
+    case "30d":
+      return { from: subDays(now, 30), to: now };
+
+    case "month":
+      return { from: startOfMonth(now), to: now };
+
+    case "last_month":
+      const lastMonth = subMonths(now, 1);
+      return {
+        from: startOfMonth(lastMonth),
+        to: endOfMonth(lastMonth),
+      };
+
+    case "all":
+      return { from: null, to: now };
+
+    default:
+      return { from: subDays(now, 7), to: now };
+  }
+}
+
 
 const employeeInclude = (tenantId: string) => ({
   user: {
@@ -346,7 +395,7 @@ router.get(
       // ----------------------------
       // TEAM OVERVIEW (TENANT SAFE)
       // ----------------------------
-      const employees = await prisma.employee.findMany({
+      const employees: any = await prisma.employee.findMany({
         where: {
           managerId,
           user: { tenantId },
@@ -362,16 +411,54 @@ router.get(
         },
       });
 
-      const teamOverview = employees.map((emp) => {
+      const teamOverview = employees.map(async (emp: any) => {
         const tasks = emp.user?.tasksAssigned || [];
         const tasksCompleted = tasks.filter(
-          (t) => t.status === "DONE"
+          (t: any) => t.status === "DONE"
         ).length;
 
-        const hoursLogged = tasks.reduce(
-          (sum, t) => sum + (t.assignedHours || 0),
-          0
+        const { from, to } = resolveDateRange(req.query);
+
+        const logs = await prisma.taskWorkLog.findMany({
+          where: {
+            userId: emp.user.id,
+            startTime: {
+              ...(from ? { gte: from } : {}),
+              ...(to ? { lte: to } : {}),
+            },
+            task: { tenantId },
+          },
+        });
+
+
+        const totalActualMinutes = logs.reduce((sum, log) => {
+          if (!log.endTime) return sum; // 🚫 DO NOT PAY OPEN LOGS
+          return sum + (log.endTime.getTime() - log.startTime.getTime()) / 60000;
+        }, 0);
+
+        const workedDates: any = new Set(
+          logs
+            .filter(l => l.endTime)
+            .map(l => l.startTime.toISOString().split("T")[0])
         );
+
+        const breakMinutes = await prisma.userAttendance.aggregate({
+          _sum: { totalBreakMinutes: true },
+          where: {
+            userId: emp.user.id,
+            workDate: {
+              in: Array.from(workedDates).map((d: any) => new Date(d)),
+            },
+          },
+        });
+
+        const netActualMinutes = subtractBreakMinutes(
+          totalActualMinutes,
+          breakMinutes._sum.totalBreakMinutes || 0
+        );
+
+        const totalHours = Math.round((netActualMinutes / 60) * 10) / 10;
+
 
         const efficiency =
           tasks.length > 0
@@ -384,7 +471,7 @@ router.get(
           role: emp.roleTitle,
           status: emp.status,
           tasksCompleted,
-          hoursLogged,
+          hoursLogged: totalHours,
           efficiency,
         };
       });
@@ -674,10 +761,40 @@ router.get(
       const completionRate =
         totalTasks > 0 ? Math.round((completed / totalTasks) * 100) : 0;
 
-      const totalHours = tasks.reduce(
-        (acc, t) => acc + (t.assignedHours || 0),
-        0
+      const logs = await prisma.taskWorkLog.findMany({
+        where: {
+          userId: employee.user.id,
+          task: { tenantId },
+        },
+      });
+
+      const totalActualMinutes = logs.reduce((sum, log) => {
+        const end = log.endTime ?? new Date();
+        return sum + (end.getTime() - log.startTime.getTime()) / 60000;
+      }, 0);
+
+      const workedDates: any = new Set(
+        logs
+          .filter(l => l.endTime)
+          .map(l => l.startTime.toISOString().split("T")[0])
       );
+
+      const breakMinutes = await prisma.userAttendance.aggregate({
+        _sum: { totalBreakMinutes: true },
+        where: {
+          userId: employee.user.id,
+          workDate: {
+            in: Array.from(workedDates).map((d: any) => new Date(d)),
+          },
+        },
+      });
+
+      const netActualMinutes = subtractBreakMinutes(
+        totalActualMinutes,
+        breakMinutes._sum.totalBreakMinutes || 0
+      );
+
+      const totalHours = Math.round((netActualMinutes / 60) * 10) / 10;
 
       res.json({
         employee: {
@@ -705,6 +822,243 @@ router.get(
   }
 );
 
+// router.get(
+//   "/:employeeId/performance",
+//   auth,
+//   requireRole("MANAGER", "PROJECT_MANAGER"),
+//   async (req, res) => {
+//     try {
+//       const { employeeId } = req.params;
+//       const { id: userId, tenantId, role } = req.user!;
+
+//       if (!employeeId) {
+//         return res.status(400).json({ error: "Employee ID is required" });
+//       }
+
+//       if (!tenantId) {
+//         return res.status(400).json({ error: "Tenant context missing" });
+//       }
+
+//       // --------------------------------
+//       // ROLE-BASED ACCESS CONTROL
+//       // --------------------------------
+//       let employee;
+
+//       if (role === "MANAGER") {
+//         // MANAGER → can access only their employees
+//         employee = await prisma.employee.findFirst({
+//           where: {
+//             id: employeeId,
+//             tenantId,
+//             managerId: userId,
+//           },
+//           include: employeePerformanceInclude(),
+//         });
+//       } else {
+//         // PROJECT_MANAGER → can access managers only
+//         employee = await prisma.employee.findFirst({
+//           where: {
+//             id: employeeId,
+//             tenantId,
+//             user: {
+//               role: "MANAGER",
+//             },
+//           },
+//           include: employeePerformanceInclude(),
+//         });
+//       }
+
+//       if (!employee) {
+//         return res
+//           .status(404)
+//           .json({ error: "Employee not found or not accessible" });
+//       }
+
+//       const tasks = employee.user.tasksAssigned;
+
+//       // -----------------------------
+//       // 📊 PERFORMANCE CALCULATIONS
+//       // -----------------------------
+
+//       const totalTasks = tasks.length;
+//       const completedTasks = tasks.filter((t) => t.status === "DONE");
+//       const activeTasks = tasks.filter((t) => t.status !== "DONE");
+
+//       const completionRate =
+//         totalTasks > 0 ? (completedTasks.length / totalTasks) * 100 : 0;
+
+//       const logs = await prisma.taskWorkLog.findMany({
+//         where: {
+//           userId: employee.user.id,
+//           task: { tenantId },
+//         },
+//       });
+
+//       const totalActualMinutes = logs.reduce((sum, log) => {
+//         const end = log.endTime ?? new Date();
+//         return sum + (end.getTime() - log.startTime.getTime()) / 60000;
+//       }, 0);
+
+//       const totalHours = Math.round((totalActualMinutes / 60) * 10) / 10;
+
+//       let onTimeCount = 0;
+//       completedTasks.forEach((t) => {
+//         if (!t.dueDate || new Date(t.updatedAt) <= new Date(t.dueDate)) {
+//           onTimeCount++;
+//         }
+//       });
+//       const totalAssignedMinutes = tasks.reduce(
+//         (sum: any, t: any) => sum + (t.assignedHours || 0) * 60,
+//         0
+//       );
+
+//       const efficiency =
+//         totalAssignedMinutes > 0 && totalActualMinutes > 0
+//           ? Math.min(
+//             150,
+//             Math.round((totalAssignedMinutes / totalActualMinutes) * 100)
+//           )
+//           : 0;
+
+//       const rating =
+//         efficiency >= 120 ? 5 :
+//           efficiency >= 100 ? 4 :
+//             efficiency >= 85 ? 3 :
+//               efficiency >= 70 ? 2 : 1;
+
+
+//       const activeDays = new Set(
+//         logs.map(log => log.startTime.toDateString())
+//       ).size;
+
+//       const engagement = Math.min(100, activeDays * 20);
+
+//       // Weekly hours (last 5 days)
+//       const weeklyHours: { day: string; hours: number }[] = [];
+//       const baseDate = to ?? new Date();
+//       for (let i = 4; i >= 0; i--) {
+//         const date = subDays(baseDate, i);
+//         const dayLabel = format(date, "EEE");
+
+//         const dayLogs = logs.filter(log =>
+//           isSameDay(log.startTime, date)
+//         );
+
+//         const minutes = dayLogs.reduce((sum, log) => {
+//           const end = log.endTime ?? new Date();
+//           return sum + (end.getTime() - log.startTime.getTime()) / 60000;
+//         }, 0);
+
+//         weeklyHours.push({
+//           day: dayLabel,
+//           hours: Math.round((minutes / 60) * 10) / 10,
+//         });
+//       }
+
+
+//       // Completion trend (last 4 weeks)
+//       const completionTrend: { week: string; completion: number }[] = [];
+
+//       for (let i = 3; i >= 0; i--) {
+//         const weekStart = startOfWeek(subWeeks(new Date(), i));
+//         const weekEnd = endOfWeek(subWeeks(new Date(), i));
+
+//         const count = tasks.filter(
+//           (t) =>
+//             t.status === "DONE" &&
+//             new Date(t.updatedAt) >= weekStart &&
+//             new Date(t.updatedAt) <= weekEnd
+//         ).length;
+
+//         completionTrend.push({ week: `W${4 - i}`, completion: count });
+//       }
+
+//       const highPriorityCompleted = completedTasks.filter(
+//         (t) => t.priority === "HIGH"
+//       ).length;
+
+//       const radar = [
+//         { metric: "Quality", A: Math.round(rating * 20), fullMark: 100 },
+//         {
+//           metric: "Speed",
+//           A: Math.min(100, completedTasks.length * 10),
+//           fullMark: 100,
+//         },
+//         {
+//           metric: "Reliability",
+//           A: Math.round(completionRate),
+//           fullMark: 100,
+//         },
+//         {
+//           metric: "Focus",
+//           A: Math.min(100, highPriorityCompleted * 20),
+//           fullMark: 100,
+//         },
+//         { metric: "Activity", A: Math.round(engagement), fullMark: 100 },
+//       ];
+
+//       const skills = [
+//         { skill: "Task Execution", percentage: Math.round(completionRate) },
+//         { skill: "Time Management", percentage: Math.round(rating * 20) },
+//         { skill: "Consistency", percentage: Math.round(engagement) },
+//       ].sort((a, b) => b.percentage - a.percentage);
+
+//       const achievements = completedTasks
+//         .filter((t) => t.priority === "HIGH")
+//         .sort(
+//           (a, b) =>
+//             new Date(b.updatedAt).getTime() -
+//             new Date(a.updatedAt).getTime()
+//         )
+//         .slice(0, 3)
+//         .map((t) => ({
+//           title: "High Priority Completed",
+//           subtitle: `Finished: ${t.title}`,
+//           icon: "Trophy",
+//         }));
+
+//       if (achievements.length === 0 && completedTasks.length > 0) {
+//         achievements.push({
+//           title: "Steady Progress",
+//           subtitle: `${completedTasks.length} tasks completed`,
+//           icon: "Star",
+//         });
+//       }
+
+//       // -----------------------------
+//       // 📦 RESPONSE
+//       // -----------------------------
+
+//       res.json({
+//         employee: {
+//           id: employee.id,
+//           name: employee.name,
+//           roleTitle: employee.roleTitle,
+//           department: employee.department,
+//           email: employee.user.email,
+//           status: employee.status,
+//         },
+//         performance: {
+//           hours: totalHours,
+//           completionRate: Math.round(completionRate),
+//           engagement: Math.round(engagement),
+//           rating: Number(rating.toFixed(1)),
+//           weeklyHours,
+//           completionTrend,
+//           radar,
+//           skills,
+//           achievements,
+//         },
+//       });
+//     } catch (err) {
+//       console.error("Employee performance error:", err);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   }
+// );
+
+
+
 router.get(
   "/:employeeId/performance",
   auth,
@@ -723,12 +1077,17 @@ router.get(
       }
 
       // --------------------------------
+      // RESOLVE DATE RANGE (🔥 IMPORTANT)
+      // --------------------------------
+      const { from, to } = resolveDateRange(req.query);
+      const rangeEnd = to ?? new Date();
+
+      // --------------------------------
       // ROLE-BASED ACCESS CONTROL
       // --------------------------------
       let employee;
 
       if (role === "MANAGER") {
-        // MANAGER → can access only their employees
         employee = await prisma.employee.findFirst({
           where: {
             id: employeeId,
@@ -738,14 +1097,11 @@ router.get(
           include: employeePerformanceInclude(),
         });
       } else {
-        // PROJECT_MANAGER → can access managers only
         employee = await prisma.employee.findFirst({
           where: {
             id: employeeId,
             tenantId,
-            user: {
-              role: "MANAGER",
-            },
+            user: { role: "MANAGER" },
           },
           include: employeePerformanceInclude(),
         });
@@ -759,79 +1115,271 @@ router.get(
 
       const tasks = employee.user.tasksAssigned;
 
-      // -----------------------------
-      // 📊 PERFORMANCE CALCULATIONS
-      // -----------------------------
+      // --------------------------------
+      // FETCH WORK LOGS (TIME-BOUND)
+      // --------------------------------
+      const logs = await prisma.taskWorkLog.findMany({
+        where: {
+          userId: employee.user.id,
+          startTime: {
+            ...(from ? { gte: from } : {}),
+            ...(to ? { lte: to } : {}),
+          },
+          task: { tenantId },
+        },
+      });
 
-      const totalTasks = tasks.length;
-      const completedTasks = tasks.filter((t) => t.status === "DONE");
-      const activeTasks = tasks.filter((t) => t.status !== "DONE");
+      // --------------------------------
+      // ACTUAL WORKED MINUTES (NO FAKE TIME)
+      // --------------------------------
+      const totalActualMinutes = logs.reduce((sum, log) => {
+        if (!log.endTime) return sum; // 🚫 open logs don't count
+        const end = log.endTime > rangeEnd ? rangeEnd : log.endTime;
+        return (
+          sum +
+          Math.max(
+            0,
+            (end.getTime() - log.startTime.getTime()) / 60000
+          )
+        );
+      }, 0);
+
+      const workedDates: any = new Set(
+        logs
+          .filter(l => l.endTime)
+          .map(l => l.startTime.toISOString().split("T")[0])
+      );
+
+      const breakMinutes = await prisma.userAttendance.aggregate({
+        _sum: { totalBreakMinutes: true },
+        where: {
+          userId: employee.user.id,
+          workDate: {
+            in: Array.from(workedDates).map((d: any) => new Date(d)),
+          },
+        },
+      });
+
+      const netActualMinutes = subtractBreakMinutes(
+        totalActualMinutes,
+        breakMinutes._sum.totalBreakMinutes || 0
+      );
+
+      // --------------------------------
+      // DAILY PAYROLL-CAPPED CALCULATION
+      // --------------------------------
+      const dailyMinutes: Record<string, number> = {};
+
+      logs.forEach(log => {
+        if (!log.endTime) return;
+
+        const day: any = log.startTime.toISOString().split("T")[0];
+        const minutes =
+          (log.endTime.getTime() - log.startTime.getTime()) / 60000;
+
+        dailyMinutes[day] = (dailyMinutes[day] || 0) + minutes;
+      });
+
+      // subtract break minutes (already aggregated safely)
+      const netPayableMinutes = Object.values(dailyMinutes)
+        .reduce((sum, minutes) => sum + Math.min(minutes, 8 * 60), 0);
+
+      const totalHours =
+        Math.round((netPayableMinutes / 60) * 10) / 10;
+
+      // --------------------------------
+      // TASK FILTERING BY RANGE
+      // --------------------------------
+      const taskIdsWorkedInRange = new Set(
+        logs.filter(l => l.endTime).map(l => l.taskId)
+      );
+
+      const rangeTasks = tasks.filter((t: any) =>
+        taskIdsWorkedInRange.has(t.id)
+      );
+
+      const completedTasks = rangeTasks.filter(
+        (t) => t.status === "DONE"
+      );
 
       const completionRate =
-        totalTasks > 0 ? (completedTasks.length / totalTasks) * 100 : 0;
+        rangeTasks.length > 0
+          ? (completedTasks.length / rangeTasks.length) * 100
+          : 0;
 
-      const totalHours = tasks.reduce(
-        (acc, t) => acc + (t.assignedHours || 0),
+      // --------------------------------
+      // ASSIGNED MINUTES (PAYROLL SAFE)
+      // --------------------------------
+      const totalAssignedMinutes = rangeTasks.reduce(
+        (sum, t) => sum + (t.assignedHours || 0) * 60,
         0
       );
 
-      let onTimeCount = 0;
-      completedTasks.forEach((t) => {
-        if (!t.dueDate || new Date(t.updatedAt) <= new Date(t.dueDate)) {
-          onTimeCount++;
+      // --------------------------------
+      // EFFICIENCY (CAPPED)
+      // --------------------------------
+      const efficiency =
+        totalAssignedMinutes > 0 && totalActualMinutes > 0
+          ? Math.min(
+            150,
+            Math.round(
+              (totalAssignedMinutes / totalActualMinutes) * 100
+            )
+          )
+          : 0;
+
+
+      const rating =
+        efficiency >= 120 ? 5 :
+          efficiency >= 100 ? 4 :
+            efficiency >= 85 ? 3 :
+              efficiency >= 70 ? 2 : 1;
+
+      // --------------------------------
+      // ENGAGEMENT (ACTIVE DAYS ONLY)
+      // --------------------------------
+      const activeDays = new Set(
+        logs
+          .filter((l) => l.endTime)
+          .map((l) => l.startTime.toDateString())
+      ).size;
+
+      const dailyWorkedMinutes: Record<string, number> = {};
+
+      logs.filter(l => l.endTime).forEach(log => {
+        let cursor = new Date(log.startTime);
+        const end = log.endTime!;
+
+        while (cursor < end) {
+          const dayKey: any = cursor.toISOString().split("T")[0];
+
+          const dayStart = new Date(cursor);
+          dayStart.setHours(0, 0, 0, 0);
+
+          const dayEnd = new Date(dayStart);
+          dayEnd.setDate(dayEnd.getDate() + 1);
+
+          const overlapStart = cursor;
+          const overlapEnd = end < dayEnd ? end : dayEnd;
+
+          const minutes: any =
+            (overlapEnd.getTime() - overlapStart.getTime()) / 60000;
+
+          dailyWorkedMinutes[dayKey] =
+            (dailyWorkedMinutes[dayKey] || 0) + minutes;
+
+          cursor = dayEnd;
         }
       });
 
-      const rating =
-        completedTasks.length > 0
-          ? (onTimeCount / completedTasks.length) * 5
-          : 0;
 
-      const oneWeekAgo = subDays(new Date(), 7);
-      const recentTasks = tasks.filter(
-        (t) => new Date(t.updatedAt) >= oneWeekAgo
-      );
+      const cappedMinutes = Object.values(dailyWorkedMinutes)
+        .reduce((sum, m) => sum + Math.min(m, 8 * 60), 0);
 
       const engagement =
-        totalTasks > 0 ? (recentTasks.length / totalTasks) * 100 : 0;
+        activeDays === 0
+          ? 0
+          : Math.round(
+            Math.min(
+              100,
+              (cappedMinutes / (activeDays * 8 * 60)) * 100
+            )
+          );
 
-      // Weekly hours (last 5 days)
+      // --------------------------------
+      // WEEKLY / RANGE HOURS CHART
+      // --------------------------------
       const weeklyHours: { day: string; hours: number }[] = [];
+      const baseDate = rangeEnd;
+      const chartDays =
+        req.query.range === "7d" ? 7 :
+          req.query.range === "14d" ? 7 :
+            req.query.range === "30d" ? 7 :
+              7; // always show last 7 days visually
 
-      for (let i = 4; i >= 0; i--) {
-        const date = subDays(new Date(), i);
+      for (let i = chartDays - 1; i >= 0; i--) {
+        const date = subDays(baseDate, i);
         const dayLabel = format(date, "EEE");
 
-        const dayEffort = tasks
-          .filter((t) => isSameDay(new Date(t.updatedAt), date))
-          .reduce((acc, t) => acc + (t.assignedHours || 0), 0);
+        const minutes = logs.reduce((sum, log) => {
+          if (!log.endTime) return sum;
 
-        weeklyHours.push({ day: dayLabel, hours: dayEffort });
+          const dayStart = new Date(date);
+          dayStart.setHours(0, 0, 0, 0);
+
+          const dayEnd = new Date(dayStart);
+          dayEnd.setDate(dayEnd.getDate() + 1);
+
+          const overlapStart =
+            log.startTime < dayStart ? dayStart : log.startTime;
+
+          const overlapEnd =
+            log.endTime > dayEnd ? dayEnd : log.endTime;
+
+          if (overlapStart >= overlapEnd) return sum;
+
+          return sum + (overlapEnd.getTime() - overlapStart.getTime()) / 60000;
+        }, 0);
+
+        const minutesForDay = Math.min(minutes, 8 * 60);
+
+        weeklyHours.push({
+          day: dayLabel,
+          hours: Math.round((minutesForDay / 60) * 10) / 10,
+        });
       }
 
-      // Completion trend (last 4 weeks)
+
+      // --------------------------------
+      // COMPLETION TREND (RANGE-AWARE)
+      // --------------------------------
       const completionTrend: { week: string; completion: number }[] = [];
 
+      const rangeEnd1 = rangeEnd; // MUST be now
+
       for (let i = 3; i >= 0; i--) {
-        const weekStart = startOfWeek(subWeeks(new Date(), i));
-        const weekEnd = endOfWeek(subWeeks(new Date(), i));
+        const weekStart = startOfWeek(subWeeks(rangeEnd1, i), {
+          weekStartsOn: 1,
+        });
 
-        const count = tasks.filter(
-          (t) =>
-            t.status === "DONE" &&
-            new Date(t.updatedAt) >= weekStart &&
-            new Date(t.updatedAt) <= weekEnd
-        ).length;
+        const weekEnd = endOfWeek(subWeeks(rangeEnd1, i), {
+          weekStartsOn: 1,
+        });
 
-        completionTrend.push({ week: `W${4 - i}`, completion: count });
+
+        console.log("Trend employee userId:", employee.user.id);
+        console.log("Trend range:", weekStart, weekEnd);
+
+        const count = await prisma.task.count({
+          where: {
+            assigneeId: employee.user.id,
+            status: "DONE",
+            isDeleted: false,
+            completedAt: {
+              gte: weekStart,
+              lte: weekEnd,
+            },
+          },
+        });
+
+        completionTrend.push({
+          week: `W${4 - i}`,
+          completion: count,
+        });
       }
 
+
+
+
+      // --------------------------------
+      // RADAR / SKILLS / ACHIEVEMENTS
+      // --------------------------------
       const highPriorityCompleted = completedTasks.filter(
         (t) => t.priority === "HIGH"
       ).length;
 
       const radar = [
-        { metric: "Quality", A: Math.round(rating * 20), fullMark: 100 },
+        { metric: "Quality", A: rating * 20, fullMark: 100 },
         {
           metric: "Speed",
           A: Math.min(100, completedTasks.length * 10),
@@ -847,22 +1395,17 @@ router.get(
           A: Math.min(100, highPriorityCompleted * 20),
           fullMark: 100,
         },
-        { metric: "Activity", A: Math.round(engagement), fullMark: 100 },
+        { metric: "Activity", A: engagement, fullMark: 100 },
       ];
 
       const skills = [
         { skill: "Task Execution", percentage: Math.round(completionRate) },
-        { skill: "Time Management", percentage: Math.round(rating * 20) },
-        { skill: "Consistency", percentage: Math.round(engagement) },
+        { skill: "Time Management", percentage: rating * 20 },
+        { skill: "Consistency", percentage: engagement },
       ].sort((a, b) => b.percentage - a.percentage);
 
       const achievements = completedTasks
         .filter((t) => t.priority === "HIGH")
-        .sort(
-          (a, b) =>
-            new Date(b.updatedAt).getTime() -
-            new Date(a.updatedAt).getTime()
-        )
         .slice(0, 3)
         .map((t) => ({
           title: "High Priority Completed",
@@ -870,18 +1413,9 @@ router.get(
           icon: "Trophy",
         }));
 
-      if (achievements.length === 0 && completedTasks.length > 0) {
-        achievements.push({
-          title: "Steady Progress",
-          subtitle: `${completedTasks.length} tasks completed`,
-          icon: "Star",
-        });
-      }
-
-      // -----------------------------
-      // 📦 RESPONSE
-      // -----------------------------
-
+      // --------------------------------
+      // RESPONSE
+      // --------------------------------
       res.json({
         employee: {
           id: employee.id,
@@ -894,8 +1428,9 @@ router.get(
         performance: {
           hours: totalHours,
           completionRate: Math.round(completionRate),
-          engagement: Math.round(engagement),
-          rating: Number(rating.toFixed(1)),
+          engagement,
+          efficiency,
+          rating,
           weeklyHours,
           completionTrend,
           radar,
@@ -909,6 +1444,7 @@ router.get(
     }
   }
 );
+
 
 router.post("/attendance/break/start", auth, async (req, res) => {
   try {
@@ -1207,16 +1743,17 @@ router.get("/dashboard/operator/today-performance", auth, async (req, res) => {
       }
 
       // Calculate minutes ONLY if endTime exists
-      if (log.startTime && log.endTime) {
-        const minutes = Math.max(
-          0,
-          Math.round(
-            (log.endTime.getTime() - log.startTime.getTime()) / 60000
-          )
-        );
+      const end = log.endTime ?? new Date(); // 👈 LIVE TIME
 
-        taskMap[taskId].actualMinutes += minutes;
-      }
+      const minutes = Math.max(
+        0,
+        Math.round(
+          (end.getTime() - log.startTime.getTime()) / 60000
+        )
+      );
+
+      taskMap[taskId].actualMinutes += minutes;
+
 
       // Earliest start time
       if (log.startTime < taskMap[taskId].startTime) {
@@ -1257,10 +1794,14 @@ router.get("/dashboard/operator/today-performance", auth, async (req, res) => {
 
     // 5️⃣ Efficiency calculation (correct)
     const efficiencyPercent =
-      totalAssignedMinutes > 0
-        ? Math.round((totalActualMinutes / totalAssignedMinutes) * 100)
-        : 100;
-
+      totalAssignedMinutes > 0 && totalActualMinutes > 0
+        ? Math.min(
+          150,
+          Math.round(
+            (totalAssignedMinutes / totalActualMinutes) * 100
+          )
+        )
+        : 0;
     // 6️⃣ Send response
     res.json({
       tasks,
@@ -1357,15 +1898,17 @@ router.get("/dashboard/manager/today-performance", auth, async (req, res) => {
       }
 
       // Only closed logs count
-      if (log.startTime && log.endTime) {
-        const minutes = Math.max(
-          0,
-          Math.round(
-            (log.endTime.getTime() - log.startTime.getTime()) / 60000
-          )
-        );
-        taskMap[taskId].actualMinutes += minutes;
-      }
+      const end = log.endTime ?? new Date();
+
+      const minutes = Math.max(
+        0,
+        Math.round(
+          (end.getTime() - log.startTime.getTime()) / 60000
+        )
+      );
+
+      taskMap[taskId].actualMinutes += minutes;
+
 
       // Earliest start
       if (log.startTime < taskMap[taskId].startTime) {
@@ -1404,9 +1947,14 @@ router.get("/dashboard/manager/today-performance", auth, async (req, res) => {
     });
 
     const efficiencyPercent =
-      totalAssignedMinutes > 0
-        ? Math.round((totalActualMinutes / totalAssignedMinutes) * 100)
-        : 100;
+      totalAssignedMinutes > 0 && totalActualMinutes > 0
+        ? Math.min(
+          150,
+          Math.round(
+            (totalAssignedMinutes / totalActualMinutes) * 100
+          )
+        )
+        : 0;
 
     res.json({
       tasks,

@@ -17,14 +17,12 @@ export default function HrmManagerDashboard() {
     const loadHrmUrl = async () => {
       try {
         const res = await fetch(
-          `${backend_url}/auth/go-to-hrm?tenantCode=${tenant_code}`,
+          `${backend_url}/auth/go-to-hrm`,
           {
             method: "GET",
             credentials: "include", // 🔥 must include cookies for auth
           }
         );
-
-        console.log(res);
 
         const data = await res.json();
         console.log("the data", data);

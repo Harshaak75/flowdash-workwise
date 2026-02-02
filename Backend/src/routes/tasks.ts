@@ -316,58 +316,59 @@ router.patch("/:taskId/status", auth, async (req, res) => {
     // ----------------------------------------
     // 🚫 Restrict multiple WORKING tasks (TENANT SAFE)
     // ----------------------------------------
-    if (newStatus === "WORKING") {
-      const activeTask = await prisma.task.findFirst({
-        where: {
-          assigneeId: userId,
-          tenantId,
-          status: "WORKING",
-          id: { not: taskId },
-        },
-      });
+    const updated = await prisma.$transaction(async (tx) => {
+      if (newStatus === "WORKING") {
+        await tx.taskWorkLog.updateMany({
+          where: { userId, endTime: null },
+          data: { endTime: new Date(), isAutoPaused: true },
+        });
 
-      if (activeTask) {
-        return res.status(409).json({
-          error: "Another task is already in progress",
-          runningTask: {
-            id: activeTask.id,
-            title: activeTask.title,
+        await tx.taskWorkLog.create({
+          data: {
+            taskId,
+            userId,
+            tenantId,
+            startTime: new Date(),
+            isAutoPaused: false,
           },
         });
       }
 
-      // ⏱ Start work log
-      await prisma.taskWorkLog.create({
-        data: {
-          taskId,
-          userId,
-          tenantId,
-          startTime: new Date(),
-        },
-      });
-    }
+      if (newStatus === "STUCK" || newStatus === "DONE") {
+        await tx.taskWorkLog.updateMany({
+          where: {
+            taskId,
+            userId,
+            tenantId,
+            endTime: null,
+          },
+          data: { endTime: new Date() },
+        });
+      }
 
-    // ----------------------------------------
-    // ⏹ Stop running timer
-    // ----------------------------------------
-    if (newStatus === "STUCK" || newStatus === "DONE") {
-      await prisma.taskWorkLog.updateMany({
-        where: {
-          taskId,
-          userId,
-          tenantId,
-          endTime: null,
-        },
+      if (newStatus === "DONE") {
+        await tx.task.update({
+          where: { id: taskId },
+          data: {
+            completedAt: new Date(),
+          },
+        });
+      }
+
+      return tx.task.update({
+        where: { id: taskId },
         data: {
-          endTime: new Date(),
+          status: newStatus as TaskStatus,
+          updatedAt: new Date(),
         },
       });
-    }
+    });
+
 
     // ----------------------------------------
     // ✅ Update task (tenant-safe)
     // ----------------------------------------
-    const updated = await prisma.task.update({
+    const updatedTask = await prisma.task.update({
       where: { id: taskId },
       data: {
         status: newStatus as TaskStatus,
@@ -377,7 +378,7 @@ router.patch("/:taskId/status", auth, async (req, res) => {
 
     res.json({
       message: "Status updated successfully",
-      task: updated,
+      task: updatedTask,
     });
 
   } catch (err) {
@@ -979,30 +980,30 @@ router.get("/:employeeId/completed", auth, async (req, res) => {
 // ----------------------------
 // PATCH: Update task status
 // ----------------------------
-router.patch("/:taskId/status", auth, async (req, res) => {
-  try {
-    const { taskId } = req.params;
-    const { status } = req.body;
+// router.patch("/:taskId/status", auth, async (req, res) => {
+//   try {
+//     const { taskId } = req.params;
+//     const { status } = req.body;
 
-    if (!status) {
-      return res.status(400).json({ error: "Status is required" });
-    }
+//     if (!status) {
+//       return res.status(400).json({ error: "Status is required" });
+//     }
 
-    if (!taskId) {
-      return res.status(400).json({ error: "Task ID is required" });
-    }
+//     if (!taskId) {
+//       return res.status(400).json({ error: "Task ID is required" });
+//     }
 
-    const updatedTask = await prisma.task.update({
-      where: { id: taskId },
-      data: { status, updatedAt: new Date() },
-    });
+//     const updatedTask = await prisma.task.update({
+//       where: { id: taskId },
+//       data: { status, updatedAt: new Date() },
+//     });
 
-    res.json({ message: "Status updated", task: updatedTask });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to update task status" });
-  }
-});
+//     res.json({ message: "Status updated", task: updatedTask });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: "Failed to update task status" });
+//   }
+// });
 
 // ----------------------------
 // POST: Upload Employee File

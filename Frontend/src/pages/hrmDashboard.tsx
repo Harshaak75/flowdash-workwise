@@ -41,7 +41,7 @@ export default function HrmDashboard() {
         await new Promise((resolve) => setTimeout(resolve, 800));
 
         const res = await fetch(
-          `${backend_url}/auth/go-to-hrm?tenantCode=${tenant_code}`,
+          `${backend_url}/auth/go-to-hrm`,
           {
             method: "GET",
             credentials: "include", // 🔥 must include cookies for auth
