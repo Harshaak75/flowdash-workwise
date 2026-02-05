@@ -248,7 +248,6 @@ const generateReport = async (type: "WEEKLY" | "MONTHLY" | "CUSTOM") => {
             </Button>
           </div>
         </div>
-
         {/* Summary Stats - Responsive Grid (2 columns on mobile, 4 on desktop) */}
         {summary && (
           <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
