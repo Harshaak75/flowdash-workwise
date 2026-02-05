@@ -1,0 +1,1 @@
+{"version":3,"file":"queue.js","sourceRoot":"","sources":["../../src/lib/queue.ts"],"names":[],"mappings":";;;;;;AAAA,mCAA+B;AAC/B,sDAA8B;AAEjB,QAAA,UAAU,GAAG,IAAI,iBAAO,CAAC,OAAO,CAAC,GAAG,CAAC,SAAU,EAAE;IAC1D,oBAAoB,EAAE,IAAI;CAC7B,CAAC,CAAC;AAEU,QAAA,WAAW,GAAG,IAAI,cAAK,CAAC,mBAAmB,EAAE;IACtD,UAAU,EAAV,kBAAU;CACb,CAAC,CAAC"}

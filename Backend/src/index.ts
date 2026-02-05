@@ -10,6 +10,7 @@ import CommnetRoutes from "./routes/Comment";
 import ProjectManagerRoutes from "./routes/ProjectManager";
 import cookieParser from "cookie-parser";
 import kanbanBoard from "./routes/Kanban.routes"
+import reportRoutes from "./routes/report";
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.use('/api/tasks', taskRoutes);
 app.use("/api/comments", CommnetRoutes);
 app.use("/api/projectManager", ProjectManagerRoutes)
 app.use("/api/kanbanBoard", kanbanBoard)
+app.use("/api/reports", reportRoutes);
 
 const PORT = Number(process.env.PORT) || 4000;
 app.listen(PORT, () => console.log(`API listening on :${PORT}`));

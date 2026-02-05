@@ -25,6 +25,7 @@ model User {
   TaskComment         TaskComment[]
   taskWorkLogs        TaskWorkLog[]
   attendances         UserAttendance[]   @relation("UserAttendances")
+  generatedReports Report[] @relation("UserGeneratedReports")
 
   @@unique([email, tenantId])
 }
@@ -208,4 +209,41 @@ enum TaskPriority {
   HIGH
   MEDIUM
   LOW
+}
+
+enum ReportStatus {
+  GENERATING
+  READY
+  FAILED
+}
+
+
+model Report {
+  id          String      @id @default(cuid())
+  tenantId    String
+  type        ReportType
+  scope       ReportScope
+  generatedBy String
+  fromDate    DateTime
+  toDate      DateTime
+  pdfUrl      String?
+  excelUrl    String?
+  createdAt   DateTime    @default(now())
+  status      ReportStatus  @default(GENERATING)
+
+  generator   User        @relation("UserGeneratedReports", fields: [generatedBy], references: [id])
+}
+
+
+enum ReportType {
+  WEEKLY
+  MONTHLY
+  EMPLOYEE
+  CUSTOM
+}
+
+enum ReportScope {
+  TEAM
+  EMPLOYEE
+  DEPARTMENT
 }

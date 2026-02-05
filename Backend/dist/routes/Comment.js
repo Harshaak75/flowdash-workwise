@@ -1,0 +1,186 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const db_1 = __importDefault(require("../db"));
+const auth_1 = require("../middleware/auth");
+const router = (0, express_1.Router)();
+router.post("/:taskId", auth_1.auth, async (req, res) => {
+    const { taskId } = req.params;
+    const { content } = req.body;
+    const userId = req.user?.id;
+    const tenantId = req.user?.tenantId;
+    if (!userId || !tenantId) {
+        return res.status(401).json({ message: "Unauthorized" });
+    }
+    if (!taskId) {
+        return res.status(400).json({ message: "Task ID required" });
+    }
+    if (!content || !content.trim()) {
+        return res.status(400).json({ message: "Comment content required" });
+    }
+    try {
+        // 🔐 TENANT-SAFE TASK FETCH
+        const task = await db_1.default.task.findFirst({
+            where: {
+                id: taskId,
+                tenantId, // 🔐 CRITICAL
+            },
+            include: {
+                createdBy: true,
+                assignee: true,
+            },
+        });
+        if (!task) {
+            return res.status(404).json({ message: "Task not found" });
+        }
+        // 🔐 AUTHORIZATION
+        const isManager = userId === task.createdById;
+        const isAssignee = userId === task.assigneeId;
+        if (!isManager && !isAssignee) {
+            return res.status(403).json({ message: "Not authorized" });
+        }
+        // ✅ CREATE COMMENT (TENANT SAFE)
+        const comment = await db_1.default.taskComment.create({
+            data: {
+                taskId,
+                tenantId, // 🔐 REQUIRED
+                authorId: userId,
+                content,
+                // Seen logic (unchanged, but correct)
+                seenByAssignee: isManager ? false : true,
+                seenByManager: isAssignee ? false : true,
+            },
+            include: {
+                author: {
+                    select: {
+                        id: true,
+                        email: true,
+                        role: true,
+                    },
+                },
+            },
+        });
+        res.json(comment);
+    }
+    catch (err) {
+        console.error("Add comment error:", err);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+router.get("/:taskId", auth_1.auth, async (req, res) => {
+    const { taskId } = req.params;
+    const userId = req.user?.id;
+    const tenantId = req.user?.tenantId;
+    if (!userId || !tenantId) {
+        return res.status(401).json({ message: "Unauthorized" });
+    }
+    if (!taskId) {
+        return res.status(400).json({ message: "Task ID required" });
+    }
+    try {
+        // 🔐 TENANT-SAFE TASK FETCH
+        const task = await db_1.default.task.findFirst({
+            where: {
+                id: taskId,
+                tenantId, // 🔐 CRITICAL
+                isDeleted: false,
+            },
+            select: {
+                id: true,
+                createdById: true,
+                assigneeId: true,
+            },
+        });
+        if (!task) {
+            return res.status(404).json({ message: "Task not found" });
+        }
+        // 🔐 AUTHORIZATION CHECK
+        const isManager = userId === task.createdById;
+        const isAssignee = userId === task.assigneeId;
+        if (!isManager && !isAssignee) {
+            return res.status(403).json({ message: "Not authorized" });
+        }
+        // 🔐 TENANT-SAFE COMMENTS FETCH
+        const comments = await db_1.default.taskComment.findMany({
+            where: {
+                taskId,
+                tenantId, // 🔐 CRITICAL
+            },
+            include: {
+                author: {
+                    select: {
+                        id: true,
+                        email: true,
+                        role: true,
+                    },
+                },
+            },
+            orderBy: {
+                createdAt: "asc",
+            },
+        });
+        res.json(comments);
+    }
+    catch (err) {
+        console.error("Fetch comments error:", err);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+router.patch("/:taskId/seen", auth_1.auth, async (req, res) => {
+    const { taskId } = req.params;
+    const userId = req.user?.id;
+    const tenantId = req.user?.tenantId;
+    if (!userId || !tenantId) {
+        return res.status(401).json({ message: "Unauthorized" });
+    }
+    if (!taskId) {
+        return res.status(400).json({ message: "Task ID required" });
+    }
+    try {
+        // 🔐 TENANT-SAFE TASK FETCH
+        const task = await db_1.default.task.findFirst({
+            where: {
+                id: taskId,
+                tenantId, // 🔐 CRITICAL
+                isDeleted: false,
+            },
+            select: {
+                id: true,
+                createdById: true,
+                assigneeId: true,
+            },
+        });
+        if (!task) {
+            return res.status(404).json({ message: "Task not found" });
+        }
+        // 🔐 AUTHORIZATION LOGIC
+        let updateData = {};
+        if (userId === task.assigneeId) {
+            updateData = { seenByAssignee: true };
+        }
+        else if (userId === task.createdById) {
+            updateData = { seenByManager: true };
+        }
+        else {
+            return res.status(403).json({ message: "Not authorized" });
+        }
+        // 🔐 TENANT-SAFE BULK UPDATE
+        await db_1.default.taskComment.updateMany({
+            where: {
+                taskId,
+                tenantId, // 🔐 CRITICAL
+            },
+            data: updateData,
+        });
+        res.json({ message: "Comments marked as seen" });
+    }
+    catch (err) {
+        console.error("Mark comments seen error:", err);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+exports.default = router;
+//# sourceMappingURL=Comment.js.map

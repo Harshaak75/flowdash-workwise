@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Report" ALTER COLUMN "pdfUrl" DROP NOT NULL,
+ALTER COLUMN "excelUrl" DROP NOT NULL;

@@ -34,69 +34,21 @@ const COLOR_WARNING = "#f97316"; // Orange for hours/pending
 // --- Mock Data Structures & Data (Unchanged) ---
 interface ReportSummary {
   totalReports: number;
-  reportChange: string;
   teamMembers: number;
-  membersStatus: string;
-  totalHours: string;
-  hoursChange: string;
-  completionRate: string;
-  completionChange: string;
+  totalHours: number;
+  completionRate: number;
 }
 
 interface ReportItem {
-  id: number;
+  id: string;
   title: string;
-  type: "Weekly" | "Monthly" | "Custom";
-  dateRange: string;
-  size: string;
-  status: "Ready" | "Generating";
+  type: "WEEKLY" | "MONTHLY" | "CUSTOM";
+  fromDate: string;
+  toDate: string;
+  status: "READY" | "GENERATING";
+  pdfUrl?: string;
+  excelUrl?: string;
 }
-
-const MOCK_SUMMARY: ReportSummary = {
-  totalReports: 24,
-  reportChange: "+4 this month",
-  teamMembers: 12,
-  membersStatus: "All active",
-  totalHours: "1,248h",
-  hoursChange: "+8% vs last month",
-  completionRate: "94%",
-  completionChange: "+3% improvement",
-};
-
-const MOCK_REPORTS: ReportItem[] = [
-  {
-    id: 1,
-    title: "Weekly Team Performance Report (W42)",
-    type: "Weekly",
-    dateRange: "Oct 16 - Oct 20, 2024",
-    size: "2.3 MB",
-    status: "Ready",
-  },
-  {
-    id: 2,
-    title: "Monthly Operations Summary (Sep)",
-    type: "Monthly",
-    dateRange: "September 2024",
-    size: "5.1 MB",
-    status: "Ready",
-  },
-  {
-    id: 3,
-    title: "Project Milestone Alpha Report",
-    type: "Custom",
-    dateRange: "Oct 15, 2024",
-    size: "1.8 MB",
-    status: "Ready",
-  },
-  {
-    id: 4,
-    title: "Q3 Task Completion Audit",
-    type: "Custom",
-    dateRange: "Jul 1 - Sep 30, 2024",
-    size: "12.0 MB",
-    status: "Generating",
-  },
-];
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -124,7 +76,7 @@ const ReportStatCard = ({
       <p
         className={`text-xs sm:text-sm font-medium ${ // Smaller trend text
           trend.includes("+") ? "text-green-600" : "text-gray-500"
-        }`}
+          }`}
       >
         {trend}
       </p>
@@ -142,20 +94,65 @@ const ReportStatCard = ({
 // --- Main Component ---
 
 export default function TeamReportsDashboard() {
+  const [role, setRole] = useState<"MANAGER" | "PROJECT_MANAGER" | null>(null);
+  const [summary, setSummary] = useState<ReportSummary | null>(null);
+  const [reports, setReports] = useState<ReportItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const token = localStorage.getItem("token");
-  const [role, setRole] = useState(null);
+
+  useEffect(() => {
+    async function loadInitialData() {
+      try {
+        const meRes = await axios.get(`${API_BASE_URL}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        setRole(meRes.data.role);
+
+        // These will be real APIs later
+        const summaryRes = await axios.get(`${API_BASE_URL}/reports/reports/summary`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        const reportsRes = await axios.get(`${API_BASE_URL}/reports/reports`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        setSummary(summaryRes.data);
+        setReports(reportsRes.data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadInitialData();
+  }, []);
+
+  const isManager = role === "MANAGER";
+  const isProjectManager = role === "PROJECT_MANAGER";
 
   // Custom Badge for status consistency
   const getReportStatusBadge = (status: ReportItem["status"]) => {
-    if (status === "Ready") {
+    if (status === "READY") {
       return (
-        <Badge className="bg-green-100 text-green-700 hover:bg-green-200 border-green-300 gap-1 text-xs sm:text-sm">
+        <Badge className="bg-green-100 text-green-700 gap-1 text-xs sm:text-sm">
           <CheckCircle2 className="h-3 w-3" /> Ready
         </Badge>
       );
     }
+
     return (
-      <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-200 border-amber-300 gap-1 animate-pulse text-xs sm:text-sm">
+      <Badge className="bg-amber-100 text-amber-700 gap-1 animate-pulse text-xs sm:text-sm">
         <Clock4 className="h-3 w-3" /> Generating
       </Badge>
     );
@@ -164,18 +161,62 @@ export default function TeamReportsDashboard() {
   // Custom Badge for report type
   const getReportTypeBadge = (type: ReportItem["type"]) => {
     let typeClass = "bg-gray-100 text-gray-700";
-    if (type === "Monthly") typeClass = "bg-[#0000cc]/10 text-[#0000cc]";
-    if (type === "Custom") typeClass = "bg-red-100 text-red-700";
+
+    if (type === "MONTHLY") typeClass = "bg-[#0000cc]/10 text-[#0000cc]";
+    if (type === "CUSTOM") typeClass = "bg-red-100 text-red-700";
+    if (type === "WEEKLY") typeClass = "bg-green-100 text-green-700";
 
     return (
       <Badge
         variant="secondary"
-        className={`mr-2 text-[10px] sm:text-xs h-4 sm:h-5 font-semibold ${typeClass}`} // Reduced text size and height
+        className={`mr-2 text-[10px] sm:text-xs h-4 sm:h-5 font-semibold ${typeClass}`}
       >
         {type}
       </Badge>
     );
   };
+
+
+const generateReport = async (type: "WEEKLY" | "MONTHLY" | "CUSTOM") => {
+  try {
+    const toDate = new Date();
+    const fromDate = new Date();
+
+    if (type === "WEEKLY") {
+      fromDate.setDate(toDate.getDate() - 7);
+    }
+
+    if (type === "MONTHLY") {
+      fromDate.setMonth(toDate.getMonth() - 1);
+    }
+
+    await axios.post(
+      `${API_BASE_URL}/reports/reports/generate`,
+      {
+        type,
+        fromDate,
+        toDate,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+  } catch (error) {
+    console.error("Generate report failed", error);
+  }
+};
+
+
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="p-6 text-gray-500">Loading reports...</div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -209,163 +250,114 @@ export default function TeamReportsDashboard() {
         </div>
 
         {/* Summary Stats - Responsive Grid (2 columns on mobile, 4 on desktop) */}
-        <div className="grid gap-4 sm:gap-6 grid-cols-2 lg:grid-cols-4">
-          <ReportStatCard
-            icon={FileText}
-            title="Total Reports Generated"
-            value={MOCK_SUMMARY.totalReports.toString()}
-            trend={MOCK_SUMMARY.reportChange}
-            colorClass={`text-[${COLOR_PRIMARY}]`}
-          />
-          <ReportStatCard
-            icon={Users}
-            title="Team Members Tracked"
-            value={MOCK_SUMMARY.teamMembers.toString()}
-            trend={MOCK_SUMMARY.membersStatus}
-            colorClass={`text-green-500`}
-          />
-          <ReportStatCard
-            icon={Clock}
-            title="Total Hours Logged"
-            value={MOCK_SUMMARY.totalHours}
-            trend={MOCK_SUMMARY.hoursChange}
-            colorClass={`text-yellow-600`}
-          />
-          <ReportStatCard
-            icon={CheckCircle2}
-            title="Completion Rate"
-            value={MOCK_SUMMARY.completionRate}
-            trend={MOCK_SUMMARY.completionChange}
-            colorClass={`text-purple-500`}
-          />
-        </div>
+        {summary && (
+          <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
+            <ReportStatCard
+              icon={FileText}
+              title="Reports Generated"
+              value={summary.totalReports.toString()}
+              trend=""
+              colorClass=""
+            />
+
+            {isManager && (
+              <ReportStatCard
+                icon={Users}
+                title="Team Members"
+                value={summary.teamMembers.toString()}
+                trend=""
+                colorClass=""
+              />
+            )}
+
+            {/* <ReportStatCard
+              icon={Clock}
+              title="Total Hours Logged"
+              value={`${summary.totalHours}h`}
+              trend=""
+              colorClass=""
+            /> */}
+
+            <ReportStatCard
+              icon={CheckCircle2}
+              title="Completion Rate"
+              value={`${summary.completionRate}%`}
+              trend=""
+              colorClass=""
+            />
+          </div>
+        )}
 
         {/* Available Reports Section - Responsive design for list items */}
-        <Card className={`shadow-lg border-[${COLOR_PRIMARY}]/20`}>
+        <Card>
           <CardHeader>
-            <CardTitle className="text-xl" style={{ color: COLOR_PRIMARY }}>
-              Recent Reports
-            </CardTitle>
-            <CardDescription className="text-sm text-gray-500">
-              Recently generated files ready for review and download.
+            <CardTitle>Recent Reports</CardTitle>
+            <CardDescription>
+              Generated reports available for download
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 sm:space-y-4">
-            {MOCK_REPORTS.map((report) => (
-              // Individual Report Item: Stacked and justified on mobile
+
+          <CardContent className="space-y-4">
+            {reports.length === 0 && (
+              <p className="text-sm text-gray-500">No reports generated yet.</p>
+            )}
+
+            {reports.map((report) => (
               <div
                 key={report.id}
-                className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 sm:p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex items-center justify-between border p-4 rounded-lg"
               >
-                <div className="flex items-start gap-3 sm:gap-4 mb-2 sm:mb-0 w-full sm:w-auto">
-                  {/* Icon and Accent - Smaller on mobile */}
-                  <div className={`rounded-lg bg-[${COLOR_PRIMARY}]/10 p-2 flex-shrink-0`}>
-                    <FileBadge className={`h-5 w-5 ${COLOR_ACCENT_ICON}`} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h4 className="font-semibold text-sm sm:text-base text-gray-800 break-words">
-                      {report.title}
-                    </h4>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {getReportTypeBadge(report.type)}
-                      <span className="text-[10px] sm:text-xs">
-                        • {report.dateRange} • {report.size}
-                      </span>
-                    </p>
-                  </div>
+                <div>
+                  <h4 className="font-semibold">{report.title}</h4>
+                  <p className="text-xs text-gray-500">
+                    {report.type} • {report.fromDate} → {report.toDate}
+                  </p>
                 </div>
 
-                {/* Status and Button Group */}
-                <div className="flex items-center justify-between w-full sm:w-auto gap-3 sm:gap-4 pt-2 border-t border-gray-100 sm:border-t-0 sm:pt-0">
-                  {getReportStatusBadge(report.status)}
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className={`gap-2 text-xs h-7 sm:h-8 ${ // Reduced height/size
-                      report.status === "Ready"
-                        ? `bg-[#0000cc] hover:bg-[#0000cc]/90`
-                        : `bg-gray-400 cursor-not-allowed`
-                    } text-white font-semibold`}
-                    disabled={report.status === "Generating"}
-                  >
-                    <Download className="h-3 w-3 sm:h-4 sm:w-4" />
-                    Download
-                  </Button>
+                <div className="flex gap-2">
+                  {report.status === "READY" ? (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() => window.open(report.pdfUrl, "_blank")}
+                      >
+                        PDF
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => window.open(report.excelUrl, "_blank")}
+                      >
+                        Excel
+                      </Button>
+                    </>
+                  ) : (
+                    <Badge className="animate-pulse">Generating</Badge>
+                  )}
                 </div>
               </div>
             ))}
           </CardContent>
         </Card>
 
+
         {/* Report Generation Options - Responsive Grid (1 column on mobile, 3 on desktop) */}
-        <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-3 pt-2 sm:pt-4">
-          
-          {/* Weekly Reports Card */}
-          <Card
-            className={`p-4 sm:p-6 flex flex-col justify-between hover:shadow-lg transition-shadow border-[${COLOR_PRIMARY}]/20`}
-          >
-            <div className="space-y-3 mb-6">
-              <Calendar className={`h-6 w-6 sm:h-8 sm:w-8 ${COLOR_ACCENT_ICON}`} />
-              <CardTitle className="text-xl" style={{ color: COLOR_PRIMARY }}>
-                Weekly Reports
-              </CardTitle>
-              <CardDescription className="text-sm text-gray-500">
-                Detailed breakdown of weekly team performance and task
-                completion.
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              className={`w-full gap-2 border-[${COLOR_PRIMARY}] text-[${COLOR_PRIMARY}] hover:bg-[#0000cc]/5 text-sm h-9`}
-            >
-              <Plus className="h-4 w-4" />
-              Generate Weekly
-            </Button>
-          </Card>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Button onClick={() => generateReport("WEEKLY")}>
+            Generate Weekly
+          </Button>
 
-          {/* Monthly Reports Card */}
-          <Card
-            className={`p-4 sm:p-6 flex flex-col justify-between hover:shadow-lg transition-shadow border-[${COLOR_PRIMARY}]/20`}
-          >
-            <div className="space-y-3 mb-6">
-              <FileText className={`h-6 w-6 sm:h-8 sm:w-8 ${COLOR_ACCENT_ICON}`} />
-              <CardTitle className="text-xl" style={{ color: COLOR_PRIMARY }}>
-                Monthly Reports
-              </CardTitle>
-              <CardDescription className="text-sm text-gray-500">
-                Comprehensive monthly analytics with trends and insights.
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              className={`w-full gap-2 border-[${COLOR_PRIMARY}] text-[${COLOR_PRIMARY}] hover:bg-[#0000cc]/5 text-sm h-9`}
-            >
-              <Plus className="h-4 w-4" />
-              Generate Monthly
-            </Button>
-          </Card>
+          <Button onClick={() => generateReport("MONTHLY")}>
+            Generate Monthly
+          </Button>
 
-          {/* Custom Reports Card */}
-          <Card
-            className={`p-4 sm:p-6 flex flex-col justify-between hover:shadow-lg transition-shadow border-[${COLOR_PRIMARY}]/20`}
-          >
-            <div className="space-y-3 mb-6">
-              <TrendingUp className={`h-6 w-6 sm:h-8 sm:w-8 ${COLOR_ACCENT_ICON}`} />
-              <CardTitle className="text-xl" style={{ color: COLOR_PRIMARY }}>
-                Custom Reports
-              </CardTitle>
-              <CardDescription className="text-sm text-gray-500">
-                Create custom reports with specific date ranges and metrics.
-              </CardDescription>
-            </div>
-            <Button
-              className={`w-full gap-2 bg-[${COLOR_PRIMARY}] hover:bg-[#0000cc]/90 text-white text-sm h-9`}
-            >
-              <Zap className="h-4 w-4" />
+          {isManager && (
+            <Button onClick={() => generateReport("CUSTOM")}>
               Create Custom
             </Button>
-          </Card>
+          )}
         </div>
+
       </div>
     </Layout>
   );
