@@ -106,6 +106,8 @@ router.post(
         },
       });
 
+      // send the email notification to the employee
+
       res.status(201).json(task);
     } catch (err) {
       console.error(err);
