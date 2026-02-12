@@ -15,6 +15,8 @@ const ProjectManager_1 = __importDefault(require("./routes/ProjectManager"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const Kanban_routes_1 = __importDefault(require("./routes/Kanban.routes"));
 const report_1 = __importDefault(require("./routes/report"));
+const reportAnalytics_1 = __importDefault(require("./routes/reportAnalytics"));
+const reportDownload_1 = __importDefault(require("./routes/reportDownload"));
 const app = (0, express_1.default)();
 app.use((0, cookie_parser_1.default)());
 app.use((0, cors_1.default)({
@@ -36,6 +38,8 @@ app.use("/api/comments", Comment_1.default);
 app.use("/api/projectManager", ProjectManager_1.default);
 app.use("/api/kanbanBoard", Kanban_routes_1.default);
 app.use("/api/reports", report_1.default);
+app.use("/api/reports/analytics", reportAnalytics_1.default);
+app.use("/api/reports/download", reportDownload_1.default);
 const PORT = Number(process.env.PORT) || 4000;
 app.listen(PORT, () => console.log(`API listening on :${PORT}`));
 //# sourceMappingURL=index.js.map

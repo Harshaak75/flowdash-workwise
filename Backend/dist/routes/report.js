@@ -8,41 +8,69 @@ const db_1 = __importDefault(require("../db"));
 const auth_1 = require("../middleware/auth");
 const queue_1 = require("../lib/queue");
 const router = (0, express_1.Router)();
+// router.post("/reports/generate", auth, async (req, res) => {
+//     try {
+//         const { type, fromDate, toDate } = req.body;
+//         const user = req.user;
+//         if (!user) {
+//             return res.status(401).json({ message: "Unauthorized" });
+//         }
+//         if (!type || !fromDate || !toDate) {
+//             return res.status(400).json({ message: "Missing fields" });
+//         }
+//         const scope = type === "EMPLOYEE" ? "EMPLOYEE" : "TEAM";
+//         const report = await prisma.report.create({
+//             data: {
+//                 tenantId: user.tenantId,
+//                 type,
+//                 scope,
+//                 generatedBy: user.id,
+//                 fromDate: new Date(fromDate),
+//                 toDate: new Date(toDate),
+//                 status: "GENERATING",
+//             },
+//         });
+//         // ✅ enqueue async job
+//         await reportQueue.add("generate-report", {
+//             reportId: report.id,
+//         });
+//         return res.status(201).json({
+//             message: "Report generation started",
+//             reportId: report.id,
+//         });
+//     } catch (err) {
+//         console.error(err);
+//         res.status(500).json({ message: "Internal server error" });
+//     }
+// });
 router.post("/reports/generate", auth_1.auth, async (req, res) => {
-    try {
-        const { type, fromDate, toDate } = req.body;
-        const user = req.user;
-        if (!user) {
-            return res.status(401).json({ message: "Unauthorized" });
-        }
-        if (!type || !fromDate || !toDate) {
-            return res.status(400).json({ message: "Missing fields" });
-        }
-        const scope = type === "EMPLOYEE" ? "EMPLOYEE" : "TEAM";
-        const report = await db_1.default.report.create({
-            data: {
-                tenantId: user.tenantId,
-                type,
-                scope,
-                generatedBy: user.id,
-                fromDate: new Date(fromDate),
-                toDate: new Date(toDate),
-                status: "GENERATING",
-            },
-        });
-        // ✅ enqueue async job
-        await queue_1.reportQueue.add("generate-report", {
-            reportId: report.id,
-        });
-        return res.status(201).json({
-            message: "Report generation started",
-            reportId: report.id,
-        });
+    const { type, scope, fromDate, toDate, employeeIds } = req.body;
+    const user = req.user;
+    if (!user) {
+        return res.status(401).json({ message: "Unauthorized" });
     }
-    catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Internal server error" });
+    if (!type || !scope || !fromDate || !toDate) {
+        return res.status(400).json({ message: "Missing fields" });
     }
+    if (scope === "EMPLOYEE" && (!employeeIds || employeeIds.length === 0)) {
+        return res.status(400).json({ message: "Employee IDs required" });
+    }
+    const report = await db_1.default.report.create({
+        data: {
+            tenantId: user.tenantId,
+            type,
+            scope,
+            generatedBy: user.id,
+            fromDate: new Date(fromDate),
+            toDate: new Date(toDate),
+        },
+    });
+    await queue_1.reportQueue.add("generate-report", {
+        reportId: report.id,
+        scope,
+        employeeIds,
+    });
+    res.json({ reportId: report.id });
 });
 router.get("/reports", auth_1.auth, async (req, res) => {
     try {
@@ -148,6 +176,51 @@ router.get("/reports/summary", auth_1.auth, async (req, res) => {
         console.error(err);
         res.status(500).json({ message: "Internal server error" });
     }
+});
+router.get("/search", auth_1.auth, async (req, res) => {
+    console.log("hiii");
+    const user = req.user;
+    const search = req.query.search || "";
+    console.log("users: ", user);
+    console.log("search: ", search);
+    if (user.role === "OPERATOR") {
+        return res.status(403).json({ message: "Forbidden" });
+    }
+    let users;
+    // PROJECT MANAGER → all managers + employees
+    if (user.role === "PROJECT_MANAGER") {
+        users = await db_1.default.user.findMany({
+            where: {
+                tenantId: user.tenantId,
+                role: { in: ["MANAGER", "OPERATOR"] },
+                email: { contains: search, mode: "insensitive" },
+            },
+            select: {
+                id: true,
+                email: true,
+                role: true,
+            },
+        });
+    }
+    // MANAGER → only their employees
+    if (user.role === "MANAGER") {
+        users = await db_1.default.user.findMany({
+            where: {
+                tenantId: user.tenantId,
+                role: "OPERATOR",
+                Employee: {
+                    managerId: user.id,
+                },
+                email: { contains: search, mode: "insensitive" },
+            },
+            select: {
+                id: true,
+                email: true,
+                role: true,
+            },
+        });
+    }
+    res.json(users);
 });
 exports.default = router;
 //# sourceMappingURL=report.js.map

@@ -1,13 +1,47 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import axios from "axios";
-export function auth(req: Request, res: Response, next: NextFunction) {
+import prisma from "../db";
+export async function auth(req: Request, res: Response, next: NextFunction) {
+
+/* =========================
+     DEV AUTH (DB-DRIVEN)
+  ========================== */
+  if (process.env.AUTH_MODE === "DEV") {
+    const email = process.env.DEV_LOGIN_EMAIL;
+    const tenantId = process.env.DEV_TENANT_ID;
+
+    if (!email || !tenantId) {
+      return res.status(500).json({
+        error: "DEV_LOGIN_EMAIL or DEV_TENANT_ID missing in env",
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: {
+        email_tenantId: {
+          email,
+          tenantId,
+        },
+      },
+    });
+
+    if (!user) {
+      return res.status(500).json({
+        error: `DEV user not found in DB: ${email}`,
+      });
+    }
+
+    req.user = user; // ✅ real DB user
+    return next();
+  }
+
+
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) return res.status(401).json({ error: "No token" });
   const token = header.slice(7);
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as Express.UserJWTPayload;
-    console.log("decoded: ", decoded)
     req.user = decoded;
     next();
   } catch {

@@ -1,1 +1,1 @@
-{"version":3,"file":"reportWorker.d.ts","sourceRoot":"","sources":["../../src/workers/reportWorker.ts"],"names":[],"mappings":""}
+{"version":3,"file":"reportWorker.d.ts","sourceRoot":"","sources":["../../src/workers/reportWorker.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,MAAM,EAAE,MAAM,QAAQ,CAAC;AAWhC,QAAA,MAAM,YAAY,0BA+JjB,CAAC;AAwCF,eAAe,YAAY,CAAC"}

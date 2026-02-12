@@ -1,1 +1,1 @@
-{"version":3,"file":"queue.d.ts","sourceRoot":"","sources":["../../src/lib/queue.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,KAAK,EAAE,MAAM,QAAQ,CAAC;AAC/B,OAAO,OAAO,MAAM,SAAS,CAAC;AAE9B,eAAO,MAAM,UAAU,SAErB,CAAC;AAEH,eAAO,MAAM,WAAW,2CAEtB,CAAC"}
+{"version":3,"file":"queue.d.ts","sourceRoot":"","sources":["../../src/lib/queue.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,KAAK,EAAE,MAAM,QAAQ,CAAC;AAC/B,OAAO,OAAO,MAAM,SAAS,CAAC;AAG9B,eAAO,MAAM,UAAU,SAErB,CAAC;AAsCH,eAAO,MAAM,WAAW,2CAEtB,CAAC"}
