@@ -9,53 +9,89 @@ import { reportQueue } from "../lib/queue";
 
 const router = Router();
 
+// router.post("/reports/generate", auth, async (req, res) => {
+//     try {
+//         const { type, fromDate, toDate } = req.body;
+//         const user = req.user;
+//         if (!user) {
+//             return res.status(401).json({ message: "Unauthorized" });
+//         }
+
+//         if (!type || !fromDate || !toDate) {
+//             return res.status(400).json({ message: "Missing fields" });
+//         }
+
+//         const scope = type === "EMPLOYEE" ? "EMPLOYEE" : "TEAM";
+
+//         const report = await prisma.report.create({
+//             data: {
+//                 tenantId: user.tenantId,
+//                 type,
+//                 scope,
+//                 generatedBy: user.id,
+//                 fromDate: new Date(fromDate),
+//                 toDate: new Date(toDate),
+//                 status: "GENERATING",
+//             },
+//         });
+
+//         // ✅ enqueue async job
+//         await reportQueue.add("generate-report", {
+//             reportId: report.id,
+//         });
+
+//         return res.status(201).json({
+//             message: "Report generation started",
+//             reportId: report.id,
+//         });
+//     } catch (err) {
+//         console.error(err);
+//         res.status(500).json({ message: "Internal server error" });
+//     }
+// });
+
 router.post("/reports/generate", auth, async (req, res) => {
-    try {
-        const { type, fromDate, toDate } = req.body;
-        const user = req.user;
-        if (!user) {
-            return res.status(401).json({ message: "Unauthorized" });
-        }
+  const { type, scope, fromDate, toDate, employeeIds } = req.body;
+  const user = req.user;
 
-        if (!type || !fromDate || !toDate) {
-            return res.status(400).json({ message: "Missing fields" });
-        }
+  if (!user) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
 
-        const scope = type === "EMPLOYEE" ? "EMPLOYEE" : "TEAM";
+  if (!type || !scope || !fromDate || !toDate) {
+    return res.status(400).json({ message: "Missing fields" });
+  }
 
-        const report = await prisma.report.create({
-            data: {
-                tenantId: user.tenantId,
-                type,
-                scope,
-                generatedBy: user.id,
-                fromDate: new Date(fromDate),
-                toDate: new Date(toDate),
-                status: "GENERATING",
-            },
-        });
+  if (scope === "EMPLOYEE" && (!employeeIds || employeeIds.length === 0)) {
+    return res.status(400).json({ message: "Employee IDs required" });
+  }
 
-        // ✅ enqueue async job
-        await reportQueue.add("generate-report", {
-            reportId: report.id,
-        });
+  const report = await prisma.report.create({
+    data: {
+      tenantId: user.tenantId,
+      type,
+      scope,
+      generatedBy: user.id,
+      fromDate: new Date(fromDate),
+      toDate: new Date(toDate),
+    },
+  });
 
-        return res.status(201).json({
-            message: "Report generation started",
-            reportId: report.id,
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Internal server error" });
-    }
+  await reportQueue.add("generate-report", {
+    reportId: report.id,
+    scope,
+    employeeIds,
+  });
+
+  res.json({ reportId: report.id });
 });
 
 
 router.get("/reports", auth, async (req, res) => {
   try {
     const user = req.user;
-    if(!user){
-        return res.status(401).json({ message: "Unauthorized" });
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
     }
 
     const where: any = {
@@ -105,8 +141,8 @@ router.get("/reports", auth, async (req, res) => {
 router.get("/reports/summary", auth, async (req, res) => {
   try {
     const user = req.user;
-    if(!user){
-        return res.status(401).json({ message: "Unauthorized" });
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
     }
 
     // Total reports
@@ -139,7 +175,7 @@ router.get("/reports/summary", auth, async (req, res) => {
         acc +
         (new Date(log.endTime!).getTime() -
           new Date(log.startTime).getTime()) /
-          60000
+        60000
       );
     }, 0);
 
@@ -175,5 +211,56 @@ router.get("/reports/summary", auth, async (req, res) => {
   }
 });
 
+
+router.get("/search", auth, async (req, res) => {
+  console.log("hiii")
+  const user = req.user!;
+  const search = (req.query.search as string) || "";
+  console.log("users: ", user)
+  console.log("search: ", search)
+
+  if (user.role === "OPERATOR") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  let users;
+
+  // PROJECT MANAGER → all managers + employees
+  if (user.role === "PROJECT_MANAGER") {
+    users = await prisma.user.findMany({
+      where: {
+        tenantId: user.tenantId,
+        role: { in: ["MANAGER", "OPERATOR"] },
+        email: { contains: search, mode: "insensitive" },
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+      },
+    });
+  }
+
+  // MANAGER → only their employees
+  if (user.role === "MANAGER") {
+    users = await prisma.user.findMany({
+      where: {
+        tenantId: user.tenantId,
+        role: "OPERATOR",
+        Employee: {
+          managerId: user.id,
+        },
+        email: { contains: search, mode: "insensitive" },
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+      },
+    });
+  }
+
+  res.json(users);
+});
 
 export default router;

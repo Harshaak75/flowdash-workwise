@@ -1002,6 +1002,9 @@ router.get("/:employeeId/completed", auth, async (req, res) => {
             role: true,
           },
         },
+        TaskComment: {
+          orderBy: { createdAt: "desc" },
+        },
       },
       orderBy: { updatedAt: "desc" },
     });

@@ -76,6 +76,7 @@ router.post("/create", auth_js_1.auth, (0, role_js_1.requireRole)("MANAGER", "PR
                 fileUrl_manager: fileUrl,
             },
         });
+        // send the email notification to the employee
         res.status(201).json(task);
     }
     catch (err) {

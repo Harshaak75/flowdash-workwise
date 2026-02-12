@@ -6,92 +6,272 @@ import prisma from "../db";
 
 const router = Router();
 
-router.get("/board", auth, async (req, res) => {
-  const tenantId = req.user?.tenantId;
+// Get a specific board by ID (with access control)
+router.get("/board/:boardId", auth, async (req, res) => {
+  try {
+    const { boardId } = req.params;
+    const userId = req.user?.id;
+    const tenantId = req.user?.tenantId;
+    const role = req.user?.role;
 
-  if (!tenantId) {
-    return res.status(401).json({ error: "Tenant not found" });
-  }
+    if (!userId || !tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
-  // 🔐 Fetch tenant-specific board
-  let board = await prisma.kanbanBoard.findFirst({
-    where: {
-      tenantId,          // 🔐 CRITICAL
-      scope: "GLOBAL",
-    },
-    include: {
-      columns: {
-        orderBy: { order: "asc" },
-        include: {
-          issues: {
-            orderBy: { createdAt: "asc" },
-          },
-        },
-      },
-    },
-  });
+    if(!boardId){
+      return res.status(400).json({ error: "Board ID is required" });
+    }
 
-  // ✅ CREATE DEFAULT BOARD PER TENANT
-  if (!board) {
-    board = await prisma.kanbanBoard.create({
-      data: {
-        name: "Main Project Board",
-        scope: "GLOBAL",
-        tenantId,         // 🔐 CRITICAL
-        columns: {
-          create: [
-            { title: "Backlog", order: 1 },
-            { title: "In Progress", order: 2 },
-            { title: "Review", order: 3 },
-            { title: "Done", order: 4 },
-          ],
-        },
+    // Fetch the board
+    const board = await prisma.kanbanBoard.findFirst({
+      where: {
+        id: boardId,
+        tenantId, // 🔐 CRITICAL: Ensure board belongs to same tenant
       },
       include: {
         columns: {
           orderBy: { order: "asc" },
-          include: { issues: true },
+          include: {
+            issues: {
+              orderBy: { createdAt: "asc" },
+            },
+          },
         },
       },
     });
-  }
 
-  res.json(board);
+    if (!board) {
+      return res.status(404).json({ error: "Board not found" });
+    }
+
+    // 🔐 Access Control
+    if (role === "PROJECT_MANAGER") {
+      // Project managers can access all boards in their tenant
+      return res.json(board);
+    } else if (role === "MANAGER") {
+      // Managers can only access their department's board
+      const employee = await prisma.employee.findUnique({
+        where: { userId },
+        select: { department: true },
+      });
+
+      if (!employee?.department) {
+        return res.status(403).json({
+          error: "Department not assigned. Please contact administrator."
+        });
+      }
+
+      if (board.department !== employee.department) {
+        return res.status(403).json({
+          error: "Access denied. You can only view your department's board."
+        });
+      }
+
+      return res.json(board);
+    } else {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+  } catch (err) {
+    console.error("❌ Get board failed:", err);
+    res.status(500).json({ error: "Failed to fetch board" });
+  }
+});
+
+// Get all accessible boards for the current user
+router.get("/boards", auth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const tenantId = req.user?.tenantId;
+    const role = req.user?.role;
+
+    if (!userId || !tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    let boards: any = [];
+
+    if (role === "PROJECT_MANAGER") {
+      // 🔐 Project managers can see:
+      // 1. Their own personal board (department = null, ownerId = userId)
+      // 2. All department boards in the tenant
+      boards = await prisma.kanbanBoard.findMany({
+        where: {
+          tenantId,
+          OR: [
+            { ownerId: userId, department: null }, // Their personal board
+            { department: { not: null } }, // All department boards
+          ],
+        },
+        include: {
+          columns: {
+            orderBy: { order: "asc" },
+            include: {
+              issues: {
+                orderBy: { createdAt: "asc" },
+              },
+            },
+          },
+        },
+        orderBy: [
+          { department: "asc" },
+          { name: "asc" },
+        ],
+      });
+
+      // If no personal board exists, create one
+      const hasPersonalBoard = boards.some(b => b.ownerId === userId && !b.department);
+      if (!hasPersonalBoard) {
+        const personalBoard = await prisma.kanbanBoard.create({
+          data: {
+            name: "Project Manager Board",
+            scope: "PERSONAL",
+            tenantId,
+            ownerId: userId,
+            department: null,
+            columns: {
+              create: [
+                { title: "Backlog", order: 1 },
+                { title: "In Progress", order: 2 },
+                { title: "Review", order: 3 },
+                { title: "Done", order: 4 },
+              ],
+            },
+          },
+          include: {
+            columns: {
+              orderBy: { order: "asc" },
+              include: { issues: true },
+            },
+          },
+        });
+        boards.unshift(personalBoard);
+      }
+    } else if (role === "MANAGER") {
+      // 🔐 Managers can only see their department's board
+      const employee = await prisma.employee.findUnique({
+        where: { userId },
+        select: { department: true },
+      });
+
+      if (!employee?.department) {
+        return res.status(403).json({
+          error: "Department not assigned. Please contact administrator."
+        });
+      }
+
+      boards = await prisma.kanbanBoard.findMany({
+        where: {
+          tenantId,
+          department: employee.department,
+        },
+        include: {
+          columns: {
+            orderBy: { order: "asc" },
+            include: {
+              issues: {
+                orderBy: { createdAt: "asc" },
+              },
+            },
+          },
+        },
+      });
+
+      // If no department board exists, create one
+      if (boards.length === 0) {
+        const departmentBoard = await prisma.kanbanBoard.create({
+          data: {
+            name: `${employee.department} Board`,
+            scope: "DEPARTMENT",
+            tenantId,
+            ownerId: userId,
+            department: employee.department,
+            columns: {
+              create: [
+                { title: "Backlog", order: 1 },
+                { title: "In Progress", order: 2 },
+                { title: "Review", order: 3 },
+                { title: "Done", order: 4 },
+              ],
+            },
+          },
+          include: {
+            columns: {
+              orderBy: { order: "asc" },
+              include: { issues: true },
+            },
+          },
+        });
+        boards.push(departmentBoard);
+      }
+    } else {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    res.json(boards);
+  } catch (err) {
+    console.error("❌ Get boards failed:", err);
+    res.status(500).json({ error: "Failed to fetch boards" });
+  }
 });
 
 router.post("/column", auth, async (req, res) => {
   try {
     console.log("🧱 CREATE COLUMN HIT", req.body);
 
-    const { title } = req.body;
+    const { title, boardId } = req.body;
+    const userId = req.user?.id;
     const tenantId = req.user?.tenantId;
+    const role = req.user?.role;
 
-    if (!tenantId) {
-      return res.status(401).json({ error: "Tenant not found" });
+    if (!userId || !tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
     }
 
     if (!title || !title.trim()) {
       return res.status(400).json({ error: "Title is required" });
     }
 
-    // 1️⃣ Find tenant-specific GLOBAL board
-    let board = await prisma.kanbanBoard.findFirst({
+    if (!boardId) {
+      return res.status(400).json({ error: "Board ID is required" });
+    }
+
+    // 🔐 Only managers can create columns
+    if (role !== "MANAGER" && role !== "PROJECT_MANAGER") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    // 1️⃣ Verify board exists and user has access
+    const board = await prisma.kanbanBoard.findFirst({
       where: {
-        scope: "GLOBAL",
+        id: boardId,
         tenantId, // 🔐 CRITICAL
       },
     });
 
-    // 2️⃣ Create board if not exists (PER TENANT)
     if (!board) {
-      board = await prisma.kanbanBoard.create({
-        data: {
-          name: "Main Kanban Board",
-          scope: "GLOBAL",
-          tenantId, // 🔐 CRITICAL
-        },
-      });
+      return res.status(404).json({ error: "Board not found" });
     }
+
+    // 2️⃣ Verify access based on role
+    if (role === "MANAGER") {
+      const employee = await prisma.employee.findUnique({
+        where: { userId },
+        select: { department: true },
+      });
+
+      if (!employee?.department) {
+        return res.status(403).json({
+          error: "Department not assigned. Please contact administrator."
+        });
+      }
+
+      if (board.department !== employee.department) {
+        return res.status(403).json({
+          error: "Access denied. You can only modify your department's board."
+        });
+      }
+    }
+    // PROJECT_MANAGER can access all boards, no additional check needed
 
     // 3️⃣ Compute order safely (per board)
     const order = await prisma.kanbanColumn.count({
