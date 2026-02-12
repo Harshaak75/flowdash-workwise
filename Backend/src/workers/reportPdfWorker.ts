@@ -74,46 +74,78 @@ export async function generateEmployeeReportPDF(
     const html = buildEmployeeReportHTML(report, snapshot, trendData);
 
     // 2️⃣ Render PDF
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-    const page = await browser.newPage();
-
-    // Use domcontentloaded to avoid timeouts if sticky connections or external assets hang
-    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 120000 });
-
+    // 2️⃣ Render PDF
+    const tmpProfilePath = path.join(os.tmpdir(), `puppeteer_profile_${Date.now()}_${Math.random().toString(36).substring(7)}`);
     const tmpDir = os.tmpdir();
     const pdfPath = path.join(tmpDir, `${reportId}-${userId}.pdf`);
-    await page.pdf({
-        path: pdfPath,
-        format: "A4",
-        printBackground: true,
-        preferCSSPageSize: true
-    });
 
-    await browser.close();
+    let browser;
+    try {
+        browser = await puppeteer.launch({
+            headless: true,
+            userDataDir: tmpProfilePath, // Unique profile per request
+            args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage" // Fixes some memory/crash issues
+            ],
+        });
+        const page = await browser.newPage();
 
-    // 3️⃣ Upload
-    const storagePath = `${report.tenantId}/reports/${reportId}-${userId}.pdf`;
+        // Use domcontentloaded to avoid timeouts if sticky connections or external assets hang
+        await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 120000 });
 
-    await supabase.storage
-        .from("reports")
-        .upload(storagePath, fs.readFileSync(pdfPath), {
-            contentType: "application/pdf",
-            upsert: true,
+        await page.pdf({
+            path: pdfPath,
+            format: "A4",
+            printBackground: true,
+            preferCSSPageSize: true
         });
 
-    const pdfUrl = supabase.storage
-        .from("reports")
-        .getPublicUrl(storagePath).data.publicUrl;
+        // 3️⃣ Upload (Inside try to ensure file exists)
+        const storagePath = `${report.tenantId}/reports/${reportId}-${userId}.pdf`;
 
-    await prisma.employeeReportSnapshot.update({
-        where: {
-            reportId_userId: { reportId, userId },
-        },
-        data: { pdfUrl },
-    });
+        await supabase.storage
+            .from("reports")
+            .upload(storagePath, fs.readFileSync(pdfPath), {
+                contentType: "application/pdf",
+                upsert: true,
+            });
 
-    return pdfUrl;
+        const pdfUrl = supabase.storage
+            .from("reports")
+            .getPublicUrl(storagePath).data.publicUrl;
+
+        await prisma.employeeReportSnapshot.update({
+            where: {
+                reportId_userId: { reportId, userId },
+            },
+            data: { pdfUrl },
+        });
+
+        return pdfUrl;
+
+    } finally {
+        if (browser) {
+            await browser.close();
+        }
+
+        // Cleanup PDF file
+        try {
+            if (fs.existsSync(pdfPath)) {
+                fs.unlinkSync(pdfPath);
+            }
+        } catch (err) {
+            console.error("Failed to delete temp PDF:", err);
+        }
+
+        // Cleanup temp profile dir
+        try {
+            if (fs.existsSync(tmpProfilePath)) {
+                fs.rmSync(tmpProfilePath, { recursive: true, force: true });
+            }
+        } catch (cleanupErr) {
+            console.error("Failed to clean up temp profile:", cleanupErr);
+        }
+    }
 }

@@ -10,6 +10,8 @@ const db_1 = __importDefault(require("../db"));
 const multer_1 = __importDefault(require("multer"));
 const supabase_js_1 = require("@supabase/supabase-js");
 const client_1 = require("@prisma/client");
+const nodemailer_1 = __importDefault(require("nodemailer"));
+const taskAssignedTemplate_js_1 = require("../template/taskAssignedTemplate.js");
 const router = (0, express_1.Router)();
 const upload = (0, multer_1.default)({ storage: multer_1.default.memoryStorage() });
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -18,6 +20,15 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     throw new Error("Supabase environment variables are not set");
 }
 const supabase = (0, supabase_js_1.createClient)(SUPABASE_URL, SUPABASE_ANON_KEY);
+const transporter = nodemailer_1.default.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT),
+    secure: false, // true only if port is 465
+    auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+    },
+});
 router.post("/create", auth_js_1.auth, (0, role_js_1.requireRole)("MANAGER", "PROJECT_MANAGER"), upload.single("file"), async (req, res) => {
     try {
         const { title, notes, dueDate, priority, assignedHours, assigneeUserId, assigneeEmployeeId, } = req.body;
@@ -77,6 +88,29 @@ router.post("/create", auth_js_1.auth, (0, role_js_1.requireRole)("MANAGER", "PR
             },
         });
         // send the email notification to the employee
+        if (assigneeId) {
+            try {
+                // 1️⃣ READ employee email (READ ONLY)
+                const assigneeUser = await db_1.default.user.findUnique({
+                    where: { id: assigneeId },
+                    select: { email: true },
+                });
+                if (assigneeUser?.email) {
+                    // 2️⃣ Send email
+                    await transporter.sendMail({
+                        from: process.env.SMTP_FROM,
+                        to: assigneeUser.email,
+                        subject: "New Task Assigned to You",
+                        html: (0, taskAssignedTemplate_js_1.taskAssignedTemplate)({ title, priority, notes }),
+                    });
+                }
+            }
+            catch (emailError) {
+                console.error("Task email notification failed:", emailError);
+                //  Do NOT throw error
+                //  Task creation must not fail if email fails
+            }
+        }
         res.status(201).json(task);
     }
     catch (err) {
@@ -743,6 +777,9 @@ router.get("/:employeeId/completed", auth_js_1.auth, async (req, res) => {
                         email: true,
                         role: true,
                     },
+                },
+                TaskComment: {
+                    orderBy: { createdAt: "desc" },
                 },
             },
             orderBy: { updatedAt: "desc" },

@@ -6,96 +6,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const bullmq_1 = require("bullmq");
 const queue_1 = require("../lib/queue");
 const db_1 = __importDefault(require("../db"));
-const multer_1 = __importDefault(require("multer"));
-const supabase_js_1 = require("@supabase/supabase-js");
-const os_1 = __importDefault(require("os"));
 const reportPdfWorker_1 = require("./reportPdfWorker");
-const upload = (0, multer_1.default)({ storage: multer_1.default.memoryStorage() });
-const tmpDir = os_1.default.tmpdir(); // platform-safe
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    throw new Error("Supabase environment variables are not set");
-}
-const supabase = (0, supabase_js_1.createClient)(SUPABASE_URL, SUPABASE_ANON_KEY);
-// new Worker(
-//   "report-generation",
-//   async (job) => {
-//     const { reportId } = job.data;
-//     const report = await prisma.report.findUnique({
-//       where: { id: reportId },
-//     });
-//     if (!report) throw new Error("Report not found");
-//     // 1️⃣ Aggregate data (example: hours + tasks)
-//     const workLogs = await prisma.taskWorkLog.findMany({
-//       where: {
-//         user: { tenantId: report.tenantId },
-//         startTime: { gte: report.fromDate },
-//         endTime: { lte: report.toDate },
-//       },
-//       include: { user: true },
-//     });
-//     const rows = workLogs.map((l) => ({
-//       user: l.user.email,
-//       hours:
-//         ((l.endTime!.getTime() - l.startTime.getTime()) / 3600000).toFixed(2),
-//     }));
-//     // 2️⃣ Generate PDF
-//     const pdfPath = path.join(tmpDir, `${report.id}.pdf`);
-//     const pdf = new PDFDocument();
-//     pdf.pipe(fs.createWriteStream(pdfPath));
-//     pdf.text(`${report.type} Report`, { align: "center" });
-//     rows.forEach((r) => pdf.text(`${r.user} - ${r.hours} hrs`));
-//     pdf.end();
-//     // 3️⃣ Generate Excel
-//     const workbook = new ExcelJS.Workbook();
-//     const sheet = workbook.addWorksheet("Report");
-//     sheet.columns = [
-//       { header: "Employee", key: "user" },
-//       { header: "Hours Worked", key: "hours" },
-//     ];
-//     sheet.addRows(rows);
-//     const excelPath = path.join(tmpDir, `${report.id}.xlsx`);
-//     await workbook.xlsx.writeFile(excelPath);
-//     // 4️⃣ Upload to Supabase
-//     const year = report.createdAt.getFullYear();
-//     const month = String(report.createdAt.getMonth() + 1).padStart(2, "0");
-//     const basePath = `${report.tenantId}/${year}/${month}/${report.type}`;
-//     const pdfUpload = await supabase.storage
-//       .from("reports")
-//       .upload(`${basePath}/${report.id}.pdf`, fs.readFileSync(pdfPath), {
-//         contentType: "application/pdf",
-//         upsert: true,
-//       });
-//     const excelUpload = await supabase.storage
-//       .from("reports")
-//       .upload(`${basePath}/${report.id}.xlsx`, fs.readFileSync(excelPath), {
-//         contentType:
-//           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-//         upsert: true,
-//       });
-//     const pdfUrl = supabase.storage
-//       .from("reports")
-//       .getPublicUrl(pdfUpload.data!.path).data.publicUrl;
-//     const excelUrl = supabase.storage
-//       .from("reports")
-//       .getPublicUrl(excelUpload.data!.path).data.publicUrl;
-//     // 5️⃣ Update report
-//     await prisma.report.update({
-//       where: { id: report.id },
-//       data: {
-//         status: "READY",
-//         pdfUrl,
-//         excelUrl,
-//       },
-//     });
-//     fs.unlinkSync(pdfPath);
-//     fs.unlinkSync(excelPath);
-//   },
-//   { connection }
-// );
-new bullmq_1.Worker("report-generation", async (job) => {
+const email_1 = require("../lib/email");
+// Remove old commented code and clean up imports
+const workerName = "report-generation";
+const reportWorker = new bullmq_1.Worker(workerName, async (job) => {
     const { reportId, scope, employeeIds } = job.data;
+    console.log(`Processing job ${job.id} for report ${reportId}`);
     // ----------------------------------
     // 1️⃣ Fetch report + generator
     // ----------------------------------
@@ -205,7 +122,7 @@ new bullmq_1.Worker("report-generation", async (job) => {
                 completedTasks,
                 todoTasks,
                 workingTasks,
-                doneTasks: completedTasks,
+                doneTasks: completedTasks, // Alias for older schema maybe?
                 completionRate,
                 totalHours,
                 avgDailyHours,
@@ -214,7 +131,7 @@ new bullmq_1.Worker("report-generation", async (job) => {
                 toDate: report.toDate,
             },
         });
-        (0, reportPdfWorker_1.generateEmployeeReportPDF)(report.id, user.id);
+        await (0, reportPdfWorker_1.generateEmployeeReportPDF)(report.id, user.id);
     }
     // ----------------------------------
     // 4️⃣ Mark report READY
@@ -223,5 +140,44 @@ new bullmq_1.Worker("report-generation", async (job) => {
         where: { id: report.id },
         data: { status: "READY" },
     });
-}, { connection: queue_1.connection });
+    console.log(`Report ${reportId} generated successfully.`);
+}, {
+    connection: queue_1.connection,
+    // Add logic to keep connection alive or restart on unexpected errors?
+    autorun: true
+});
+// ----------------------------------
+// 🔴 ERROR HANDLERS (Email Notification)
+// ----------------------------------
+reportWorker.on('failed', async (job, err) => {
+    console.error(`Status: FAILED for Job ${job?.id} in ${workerName}`);
+    console.error(err);
+    // Special handling for "Missing lock" errors which happen after restarts
+    if (err.message.includes("Missing lock")) {
+        console.warn(`⚠️ Job ${job?.id} failed due to missing lock (likely Redis restart). The job might have actually completed.`);
+        await (0, email_1.sendWorkerErrorEmail)(workerName, err, {
+            jobId: job?.id,
+            reason: "Lock lost during processing. Check if job completed or needs retry."
+        });
+    }
+    else {
+        await (0, email_1.sendWorkerErrorEmail)(workerName, err, job?.data);
+    }
+});
+reportWorker.on('error', async (err) => {
+    console.error(`Status: ERROR for Worker ${workerName}`);
+    console.error(err);
+    await (0, email_1.sendWorkerErrorEmail)(workerName, err, { context: "Worker Process Error" });
+});
+process.on('unhandledRejection', async (reason) => {
+    console.error('Unhandled Rejection at:', reason);
+    await (0, email_1.sendWorkerErrorEmail)("Process", reason, { context: "Unhandled Rejection" });
+});
+process.on('uncaughtException', async (err) => {
+    console.error('Uncaught Exception:', err);
+    await (0, email_1.sendWorkerErrorEmail)("Process", err, { context: "Uncaught Exception" });
+    // connection.quit(); // Optional: close connection
+    process.exit(1);
+});
+exports.default = reportWorker;
 //# sourceMappingURL=reportWorker.js.map
