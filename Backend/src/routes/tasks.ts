@@ -6,6 +6,7 @@ import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import { TaskStatus } from "@prisma/client";
 import nodemailer from "nodemailer";
+import { taskAssignedTemplate } from "../template/taskAssignedTemplate.js";
 
 const router = Router();
 
@@ -118,35 +119,29 @@ router.post(
       });
 
       // send the email notification to the employee
-if (assigneeId) {
-  try {
-    // 1️⃣ READ employee email (READ ONLY)
-    const assigneeUser = await prisma.user.findUnique({
-      where: { id: assigneeId },
-      select: { email: true },
-    });
+      if (assigneeId) {
+        try {
+          // 1️⃣ READ employee email (READ ONLY)
+          const assigneeUser = await prisma.user.findUnique({
+            where: { id: assigneeId },
+            select: { email: true },
+          });
 
-    if (assigneeUser?.email) {
-      // 2️⃣ Send email
-      await transporter.sendMail({
-        from: process.env.SMTP_FROM,
-        to: assigneeUser.email,
-        subject: "New Task Assigned to You",
-        html: `
-          <h3>You have a new task assigned</h3>
-          <p><strong>Title:</strong> ${title}</p>
-          <p><strong>Priority:</strong> ${priority}</p>
-          <p><strong>Notes:</strong> ${notes || "No notes provided"}</p>
-          <p>Please login to the system to view the task.</p>
-        `,
-      });
-    }
-  } catch (emailError) {
-    console.error("Task email notification failed:", emailError);
-    //  Do NOT throw error
-    //  Task creation must not fail if email fails
-  }
-}
+          if (assigneeUser?.email) {
+            // 2️⃣ Send email
+            await transporter.sendMail({
+              from: process.env.SMTP_FROM,
+              to: assigneeUser.email,
+              subject: "New Task Assigned to You",
+              html: taskAssignedTemplate({ title, priority, notes }),
+            });
+          }
+        } catch (emailError) {
+          console.error("Task email notification failed:", emailError);
+          //  Do NOT throw error
+          //  Task creation must not fail if email fails
+        }
+      }
 
       res.status(201).json(task);
     } catch (err) {
