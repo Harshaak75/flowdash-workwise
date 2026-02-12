@@ -1,17 +1,15 @@
 import { Layout } from "@/components/Layout";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useState, useEffect } from "react";
-import { ThreeDot } from "react-loading-indicators";
 import { useNavigate } from "react-router-dom";
+import { HRMLoader } from "@/components/HRMLoader"; // Import the new loader
 
 export default function HrmManagerDashboard() {
   const [hrmUrl, setHrmUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const tenant_code = import.meta.env.VITE_TENANT_CODE;
-  const backend_url = import.meta.env.VITE_API_BASE_URL;
-
   const navigate = useNavigate();
+  const backend_url = import.meta.env.VITE_API_BASE_URL;
 
   useEffect(() => {
     const loadHrmUrl = async () => {
@@ -29,56 +27,76 @@ export default function HrmManagerDashboard() {
 
         if (res.ok && data.redirectUrl) {
           setHrmUrl(data.redirectUrl);
-        } else if (data.error == "Session expired, login again.") {
-          navigate("/login");
+          // NOTE: We do NOT set isLoading(false) here. 
+          // We wait for the iframe onLoad event.
+        } else if (data.error === "Session expired, login again.") {
+          setTimeout(() => navigate("/login"), 0);
+          setError("Session expired. Redirecting to login...");
+          setIsLoading(false);
+        } else if (!res.ok) {
+          setError(data.error || "Failed to retrieve redirect URL.");
+          setIsLoading(false);
+        } else {
+          setError("No redirect URL provided.");
+          setIsLoading(false);
         }
       } catch (err: any) {
         console.error("Failed to load HRM URL:", err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
+        setError(err.message || "Network error occurred.");
+        setIsLoading(false);
       }
     };
 
     loadHrmUrl();
-  }, []);
-
-  if (error) return <p className="text-red-600">Error: {error}</p>;
+  }, [backend_url, navigate]);
 
   return (
     <Layout>
-      <div className="w-full h-[calc(100vh-4rem)] flex items-center justify-center p-0 m-0">
-        {loading ? (
-          <div className="flex items-center justify-center h-[calc(100vh-80px)]">
-            <ThreeDot
-              variant="bounce"
-              color={["#0000CC", "#D70707"]}
-              size="medium"
-              text=""
-              // Setting a text color for better visibility
-              textColor="#32cd32"
-            />
+      <div className="w-full h-[calc(100vh-4rem)] relative bg-gray-50 flex flex-col">
+
+        {/* 1. Loading State (Covers fetching + iframe loading) */}
+        {isLoading && !error && (
+          <div className="absolute inset-0 z-50 bg-white">
+            <HRMLoader />
           </div>
-        ) : error ? (
-          <div className="flex flex-col items-center justify-center text-red-600">
-            <AlertCircle className="h-6 w-6" />
-            <p className="font-medium mt-2">Failed to load HRM</p>
-            <p className="text-xs opacity-80">{error}</p>
+        )}
+
+        {/* 2. Error State */}
+        {!isLoading && error && (
+          <div className="flex flex-col items-center justify-center h-full text-red-600">
+            <AlertCircle className="h-10 w-10 text-red-600" />
+            <p className="font-bold text-lg mt-2">
+              HRM Dashboard Failed to Load
+            </p>
+            <p className="text-sm text-center mt-1 max-w-md">{error}</p>
           </div>
-        ) : hrmUrl ? (
+        )}
+
+        {/* 3. Success State (Iframe) */}
+        {hrmUrl && (
           <iframe
             src={hrmUrl}
             title="HRM Dashboard"
             className="w-full h-full border-0"
+            // When the iframe finishes loading, hide the loader
+            onLoad={() => setIsLoading(false)}
             style={{
               display: "block",
             }}
             allow="fullscreen; geolocation"
           />
-        ) : (
-          <p className="text-gray-500 text-sm">No HRM Dashboard available.</p>
         )}
+
+        {/* 4. Fallback if no URL and no Loading and no Error (Shouldn't happen) */}
+        {!isLoading && !error && !hrmUrl && (
+          <div className="text-center text-gray-500 p-10 m-auto">
+            <AlertCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+            <p className="text-sm">No HRM Dashboard URL available.</p>
+          </div>
+        )}
+
       </div>
     </Layout>
   );
 }
+
