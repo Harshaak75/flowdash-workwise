@@ -20,7 +20,7 @@ const reportDownload_1 = __importDefault(require("./routes/reportDownload"));
 const app = (0, express_1.default)();
 app.use((0, cookie_parser_1.default)());
 app.use((0, cors_1.default)({
-    origin: ["http://localhost:8080", "https://flowbit.dotspeaks.com", "http://194.163.139.103:4001", "http://localhost:5000", "http://localhost:8082"], // your frontend origin
+    origin: ["http://localhost:8080", "http://localhost:8081", "https://flowbit.dotspeaks.com", "http://194.163.139.103:4001", "http://localhost:5000", "http://localhost:8082"], // your frontend origin
     credentials: true, // ✅ allows cookies
 }));
 app.use(express_1.default.json());

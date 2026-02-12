@@ -20,7 +20,7 @@ app.use(cookieParser());
 
 app.use(
   cors({
-    origin: ["http://localhost:8080","https://flowbit.dotspeaks.com","http://194.163.139.103:4001", "http://localhost:5000", "http://localhost:8082"], // your frontend origin
+    origin: ["http://localhost:8080","http://localhost:8081","https://flowbit.dotspeaks.com","http://194.163.139.103:4001", "http://localhost:5000", "http://localhost:8082"], // your frontend origin
     credentials: true, // ✅ allows cookies
   })
 );
