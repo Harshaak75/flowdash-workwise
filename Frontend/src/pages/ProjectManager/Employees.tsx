@@ -47,7 +47,8 @@ import {
   Zap,
   MessageCircleDashed,
   CheckIcon,
-  Upload, // Added Upload icon for files
+  Upload,
+  FileText, // Added Upload icon for files
 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import {
@@ -236,7 +237,7 @@ const SkeletonEmployeeManagerDashboard = () => {
                 </div>
               </CardHeader>
               <Separator className="my-0" />
-              <CardContent className="p-4 sm:p-6 flex-1 overflow-y-auto">
+              <CardContent className="p-4 sm:p-6 flex-1 overflow-hidden">
                 {/* Ongoing Tasks Table/Card Skeleton */}
                 <Card className="flex-1 border-gray-200 shadow-sm">
                   <CardHeader className="pb-2">
@@ -439,9 +440,11 @@ const EmployeeCalendarView = ({ employee }: { employee: Employee }) => {
 const TaskCommentPanel = ({
   task,
   onClose,
+  className,
 }: {
   task: Task;
   onClose: () => void;
+  className?: string; // Add className prop
 }) => {
   const token = localStorage.getItem("token");
   const currentUserRole = localStorage.getItem("role") || "MANAGER";
@@ -506,11 +509,17 @@ const TaskCommentPanel = ({
     }
   };
 
-  // ... rest of the TaskCommentPanel implementation ...
+  // Default fixed chat bubble styles
+  const defaultClasses = "fixed right-0 bottom-0 sm:right-6 sm:bottom-6 w-full sm:w-96 h-full sm:h-[480px] bg-white rounded-t-xl sm:rounded-2xl shadow-2xl border border-gray-100 z-50";
+
+  // If a className is passed, use it along with base structural styles.
+  // Otherwise, use the default fixed styles.
+  const containerClasses = className
+    ? `${className} bg-white border-gray-100 flex flex-col overflow-hidden`
+    : `${defaultClasses} flex flex-col overflow-hidden`;
 
   return (
-    // Responsive Modal Placement: Fixed corner on desktop, full screen on mobile
-    <div className="fixed right-0 bottom-0 sm:right-6 sm:bottom-6 w-full sm:w-96 h-full sm:h-[480px] bg-white rounded-t-xl sm:rounded-2xl shadow-2xl border border-gray-100 flex flex-col overflow-hidden z-50">
+    <div className={containerClasses}>
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-3 flex items-center justify-between flex-shrink-0">
         <h3 className="font-semibold text-sm truncate">
@@ -1055,9 +1064,9 @@ export function EmployeeManagerDashboard() {
   const COLOR_SUCCESS = "#10b981"; // Green for completion
 
   const CompletedCalendarView = ({ employeeId }: { employeeId: string }) => {
-    // ... (CompletedCalendarView logic remains the same, but using responsive text sizes)
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(false);
+    const [activeCommentTask, setActiveCommentTask] = useState<Task | null>(null);
     const token = localStorage.getItem("token");
 
     const fetchTasks = async () => {
@@ -1095,9 +1104,8 @@ export function EmployeeManagerDashboard() {
     const sortedDates = Object.keys(completedByDate).sort().reverse();
 
     return (
-      <CardContent className="p-0 space-y-4">
+      <CardContent className="p-0 space-y-4 h-full flex flex-col relative">
         <CardHeader className="p-0 pb-4">
-          {/* Title: Smaller on mobile (text-lg) */}
           <CardTitle
             className="text-lg sm:text-xl flex items-center gap-2"
             style={{ color: COLOR_PRIMARY }}
@@ -1108,7 +1116,7 @@ export function EmployeeManagerDashboard() {
             Completed Task History
           </CardTitle>
           <CardDescription className="text-sm text-gray-500">
-            A chronological log of all tasks you have marked as 'Completed'.
+            A detailed log of all completed tasks, including files and comments.
           </CardDescription>
         </CardHeader>
 
@@ -1120,56 +1128,115 @@ export function EmployeeManagerDashboard() {
             />
           </div>
         ) : sortedDates.length > 0 ? (
-          <div className="space-y-4 sm:space-y-6">
-            {" "}
-            {/* Reduced vertical space on mobile */}
+          <div className="space-y-6 overflow-y-auto pr-2 pb-10 max-h-[calc(100vh-320px)]">
             {sortedDates.map((date) => (
               <div
                 key={date}
-                className="border-l-4 pl-3 sm:pl-4 py-2 sm:py-3 rounded-r-md shadow-sm" // Reduced padding
-                style={{
-                  borderColor: COLOR_SUCCESS,
-                  backgroundColor: `${COLOR_SUCCESS}10`,
-                }}
+                className="border-l-4 pl-3 sm:pl-4 py-3 rounded-r-xl shadow-sm bg-white border-green-500"
               >
-                <p
-                  className="font-bold text-sm sm:text-base mb-1" // Reduced text size
-                  style={{ color: COLOR_SUCCESS }}
-                >
+                <p className="font-bold text-sm sm:text-base mb-3 text-green-700 bg-green-50 p-2 rounded w-fit">
                   {new Date(date).toLocaleDateString("en-US", {
+                    weekday: "long",
                     year: "numeric",
                     month: "long",
                     day: "numeric",
                   })}
                 </p>
-                <ul className="space-y-1">
-                  {" "}
-                  {/* Reduced vertical space */}
+                <div className="space-y-3">
                   {completedByDate[date].map((task) => (
-                    <li
+                    <div
                       key={task.id}
-                      className="flex items-center gap-2 text-xs sm:text-sm text-green-800" // Reduced text size
+                      className="p-3 border border-gray-100 rounded-lg hover:shadow-md transition-shadow bg-gray-50/50 min-h-[90px]"
                     >
-                      <CheckCircle2
-                        className={`h-3 w-3 sm:h-4 sm:w-4 text-green-600`}
-                      />{" "}
-                      {/* Reduced icon size */}
-                      <span className="font-medium">{task.title}</span>
-                    </li>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                            <h4 className="font-semibold text-gray-800 text-sm sm:text-base leading-tight line-clamp-2">
+                              {task.title}
+                            </h4>
+                          </div>
+
+                          {/* File Attachments Section */}
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {task.fileUrl_operator ? (
+                              <a
+                                href={task.fileUrl_operator}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 text-blue-700 text-xs font-medium rounded-md hover:bg-blue-100 transition-colors border border-blue-200"
+                              >
+                                <Upload className="h-3 w-3" />
+                                Employee Submission
+                              </a>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 text-gray-400 text-xs font-medium rounded-md border border-gray-200 cursor-not-allowed">
+                                <Upload className="h-3 w-3" /> No Submission File
+                              </span>
+                            )}
+
+                            {task.fileUrl_manager && (
+                              <a
+                                href={task.fileUrl_manager}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 text-purple-700 text-xs font-medium rounded-md hover:bg-purple-100 transition-colors border border-purple-200"
+                              >
+                                <FileText className="h-3 w-3" />
+                                Manager Brief
+                              </a>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex flex-col items-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setActiveCommentTask(task)}
+                            className="h-8 text-xs gap-1 border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+                          >
+                            <MessageCircleDashed className="h-3.5 w-3.5" />
+                            Comments
+                          </Button>
+                          <span className="text-[10px] text-gray-400">
+                            {new Date(task.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   ))}
-                </ul>
+                </div>
               </div>
             ))}
           </div>
         ) : (
           <div className="text-center py-6 sm:py-10 text-gray-500 border border-dashed border-gray-300 rounded-lg bg-gray-50">
             <ListChecks
-              className={`h-8 w-8 sm:h-10 sm:w-10 mx-auto mb-3`} // Reduced icon size
+              className={`h-8 w-8 sm:h-10 sm:w-10 mx-auto mb-3`}
               style={{ color: COLOR_PRIMARY }}
             />
             <p className="text-sm">
               No completed tasks logged yet this period.
             </p>
+          </div>
+        )}
+
+        {/* Comment Panel Overlay */}
+        {activeCommentTask && (
+          <div className="absolute inset-0 z-50 flex justify-end">
+            <div
+              className=""
+              onClick={() => setActiveCommentTask(null)}
+            />
+            <div className="relative w-full sm:w-[400px] h-full shadow-2xl animate-in slide-in-from-right-10">
+              <TaskCommentPanel
+                task={activeCommentTask}
+                onClose={() => setActiveCommentTask(null)}
+                className="rounded-xl h-full shadow-2xl"
+              />
+            </div>
           </div>
         )}
       </CardContent>
@@ -1529,7 +1596,7 @@ export function EmployeeManagerDashboard() {
                           : "text-gray-500"
                           }`}
                       >
-                        {emp.role}
+                        {emp.role == "OPERATOR" ? "Employee" : emp.role}
                       </p>
                     </div>
                   </div>
@@ -1580,8 +1647,8 @@ export function EmployeeManagerDashboard() {
                     </TabsList>
                   </CardHeader>
                   <Separator className="my-0" />
-                  <CardContent className="p-4 sm:p-6 flex-1 overflow-y-auto">
-                    <TabsContent value="calendar" className="h-full m-0">
+                  <CardContent className="p-4 sm:p-6 flex-1 overflow-hidden">
+                    <TabsContent value="calendar" className="h-full m-0 overflow-hidden">
                       <CompletedCalendarView employeeId={selectedEmployee.id} />
                     </TabsContent>
                     <TabsContent value="task" className="h-full m-0">

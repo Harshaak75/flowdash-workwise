@@ -42,7 +42,6 @@ export async function auth(req: Request, res: Response, next: NextFunction) {
   const token = header.slice(7);
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as Express.UserJWTPayload;
-    console.log("decoded: ", decoded)
     req.user = decoded;
     next();
   } catch {

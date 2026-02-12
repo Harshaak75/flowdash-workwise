@@ -5,14 +5,41 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.auth = auth;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-function auth(req, res, next) {
+const db_1 = __importDefault(require("../db"));
+async function auth(req, res, next) {
+    /* =========================
+         DEV AUTH (DB-DRIVEN)
+      ========================== */
+    if (process.env.AUTH_MODE === "DEV") {
+        const email = process.env.DEV_LOGIN_EMAIL;
+        const tenantId = process.env.DEV_TENANT_ID;
+        if (!email || !tenantId) {
+            return res.status(500).json({
+                error: "DEV_LOGIN_EMAIL or DEV_TENANT_ID missing in env",
+            });
+        }
+        const user = await db_1.default.user.findUnique({
+            where: {
+                email_tenantId: {
+                    email,
+                    tenantId,
+                },
+            },
+        });
+        if (!user) {
+            return res.status(500).json({
+                error: `DEV user not found in DB: ${email}`,
+            });
+        }
+        req.user = user; // ✅ real DB user
+        return next();
+    }
     const header = req.headers.authorization;
     if (!header?.startsWith("Bearer "))
         return res.status(401).json({ error: "No token" });
     const token = header.slice(7);
     try {
         const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET);
-        console.log("decoded: ", decoded);
         req.user = decoded;
         next();
     }

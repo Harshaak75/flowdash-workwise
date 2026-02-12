@@ -26,6 +26,7 @@ model User {
   taskWorkLogs        TaskWorkLog[]
   attendances         UserAttendance[]   @relation("UserAttendances")
   generatedReports Report[] @relation("UserGeneratedReports")
+  employeeReportSnapshots EmployeeReportSnapshot[]
 
   @@unique([email, tenantId])
 }
@@ -155,12 +156,17 @@ model BreakLog {
 }
 
 model KanbanBoard {
-  id        String         @id @default(cuid())
-  name      String
-  tenantId  String
-  scope     String         @default("GLOBAL")
-  createdAt DateTime       @default(now())
-  columns   KanbanColumn[]
+  id         String         @id @default(cuid())
+  name       String
+  tenantId   String
+  scope      String         @default("GLOBAL")
+  department String?        // Department this board belongs to (null for PROJECT_MANAGER's personal board)
+  ownerId    String?        // User ID of the board owner (PROJECT_MANAGER or MANAGER)
+  createdAt  DateTime       @default(now())
+  columns    KanbanColumn[]
+  
+  @@index([tenantId, department])
+  @@index([ownerId])
 }
 
 model KanbanColumn {
@@ -232,7 +238,42 @@ model Report {
   status      ReportStatus  @default(GENERATING)
 
   generator   User        @relation("UserGeneratedReports", fields: [generatedBy], references: [id])
+  snapshots   EmployeeReportSnapshot[]
 }
+
+model EmployeeReportSnapshot {
+  id              String   @id @default(cuid())
+  reportId        String
+  userId          String
+  tenantId        String
+
+  totalTasks      Int
+  completedTasks  Int
+  todoTasks       Int
+  workingTasks    Int
+  doneTasks       Int
+
+  completionRate  Int
+  totalHours      Int
+  avgDailyHours   Float
+  productivityScore Int
+
+  pdfUrl          String?
+  excelUrl        String?
+
+  fromDate        DateTime
+  toDate          DateTime
+
+  createdAt       DateTime @default(now())
+
+  report          Report   @relation(fields: [reportId], references: [id])
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@unique([reportId, userId])
+  @@index([reportId])
+  @@index([userId])
+}
+
 
 
 enum ReportType {
