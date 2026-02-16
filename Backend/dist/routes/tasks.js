@@ -87,6 +87,25 @@ router.post("/create", auth_js_1.auth, (0, role_js_1.requireRole)("MANAGER", "PR
                 fileUrl_manager: fileUrl,
             },
         });
+        // 🔔 NOTIFICATION LOGIC
+        if (assigneeId) {
+            try {
+                const truncatedTitle = title.length > 20 ? title.substring(0, 20) + "..." : title;
+                await db_1.default.notification.create({
+                    data: {
+                        userId: assigneeId,
+                        tenantId,
+                        type: "TASK_ASSIGNED",
+                        title: "New Task Assigned",
+                        message: `You have been assigned a new task: ${truncatedTitle}`,
+                        resourceId: task.id
+                    }
+                });
+            }
+            catch (e) {
+                console.error("Failed to create notification", e);
+            }
+        }
         // send the email notification to the employee
         if (assigneeId) {
             try {
@@ -212,6 +231,24 @@ router.patch("/:id", auth_js_1.auth, (0, role_js_1.requireRole)("MANAGER", "PROJ
             where: { id: existingTask.id },
             data: updateData,
         });
+        if (newAssigneeId && newAssigneeId !== existingTask.assigneeId) {
+            try {
+                const truncatedTitle = task.title.length > 20 ? task.title.substring(0, 20) + "..." : task.title;
+                await db_1.default.notification.create({
+                    data: {
+                        userId: newAssigneeId,
+                        tenantId,
+                        type: "TASK_ASSIGNED",
+                        title: "Task Reassigned To You",
+                        message: `You have been assigned: ${truncatedTitle}`,
+                        resourceId: task.id
+                    }
+                });
+            }
+            catch (e) {
+                console.error("Failed to create reassignment notification", e);
+            }
+        }
         res.json(task);
     }
     catch (error) {
@@ -445,6 +482,23 @@ router.post("/:id/transfer", auth_js_1.auth, (0, role_js_1.requireRole)("MANAGER
                 updatedAt: new Date(),
             },
         });
+        // 🔔 NOTIFICATION
+        try {
+            const truncatedTitle = updated.title.length > 20 ? updated.title.substring(0, 20) + "..." : updated.title;
+            await db_1.default.notification.create({
+                data: {
+                    userId: assigneeId,
+                    tenantId,
+                    type: "TASK_TRANSFERRED",
+                    title: "Task Transferred To You",
+                    message: `You have been assigned: ${truncatedTitle}`,
+                    resourceId: updated.id
+                }
+            });
+        }
+        catch (e) {
+            console.error("Failed to create transfer notification", e);
+        }
         res.json(updated);
     }
     catch (err) {
@@ -500,21 +554,48 @@ router.get("/Dashboard", auth_js_1.auth, (0, role_js_1.requireRole)("OPERATOR"),
         if (!userId || !tenantId) {
             return res.status(400).json({ message: "Invalid user context" });
         }
-        // 🔒 Tenant-safe task fetch
+        // 🔒 Tenant-safe task fetch with work logs
         const tasks = await db_1.default.task.findMany({
             where: {
                 assigneeId: userId,
                 tenantId,
                 isDeleted: false,
             },
+            include: {
+                taskWorkLogs: {
+                    where: {
+                        userId: userId,
+                    },
+                    select: {
+                        startTime: true,
+                        endTime: true,
+                    },
+                },
+            },
             orderBy: { dueDate: "asc" },
         });
+        // Calculate hoursUsed for each task from work logs
+        const tasksWithHours = tasks.map(task => {
+            let totalMinutes = 0;
+            for (const log of task.taskWorkLogs) {
+                const end = log.endTime ?? new Date();
+                const minutes = Math.max(0, Math.round((end.getTime() - log.startTime.getTime()) / 60000));
+                totalMinutes += minutes;
+            }
+            const hoursUsed = Math.round((totalMinutes / 60) * 10) / 10;
+            // Remove taskWorkLogs from response and add hoursUsed
+            const { taskWorkLogs, ...taskData } = task;
+            return {
+                ...taskData,
+                hoursUsed,
+            };
+        });
         // ---------- STATS ----------
-        const totalTasks = tasks.length;
-        const completedTasks = tasks.filter(t => t.status === "DONE").length;
-        const pendingTasks = tasks.filter(t => t.status === "TODO").length;
-        const inProgressTasks = tasks.filter(t => t.status === "WORKING").length;
-        const stuckTasks = tasks.filter(t => t.status === "STUCK").length;
+        const totalTasks = tasksWithHours.length;
+        const completedTasks = tasksWithHours.filter(t => t.status === "DONE").length;
+        const pendingTasks = tasksWithHours.filter(t => t.status === "TODO").length;
+        const inProgressTasks = tasksWithHours.filter(t => t.status === "WORKING").length;
+        const stuckTasks = tasksWithHours.filter(t => t.status === "STUCK").length;
         const completionRate = totalTasks > 0
             ? Math.round((completedTasks / totalTasks) * 100)
             : 0;
@@ -528,7 +609,7 @@ router.get("/Dashboard", auth_js_1.auth, (0, role_js_1.requireRole)("OPERATOR"),
             const endOfWeek = new Date(startOfWeek);
             endOfWeek.setDate(startOfWeek.getDate() + 6);
             endOfWeek.setHours(23, 59, 59, 999);
-            const weekTasks = tasks.filter(t => t.updatedAt >= startOfWeek &&
+            const weekTasks = tasksWithHours.filter(t => t.updatedAt >= startOfWeek &&
                 t.updatedAt <= endOfWeek);
             const completedThisWeek = weekTasks.filter(t => t.status === "DONE").length;
             const rate = weekTasks.length > 0
@@ -541,7 +622,7 @@ router.get("/Dashboard", auth_js_1.auth, (0, role_js_1.requireRole)("OPERATOR"),
         }
         // ---------- RESPONSE ----------
         res.json({
-            tasks,
+            tasks: tasksWithHours,
             stats: {
                 totalTasks,
                 completedTasks,

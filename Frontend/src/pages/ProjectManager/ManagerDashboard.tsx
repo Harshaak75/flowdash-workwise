@@ -68,6 +68,9 @@ export default function ManagerDashboard() {
     const [tasks, setTasks] = useState<any[]>([]);
     const [stats, setStats] = useState<any>(null);
     const [now, setNow] = useState(new Date());
+    const date = new Date();
+    const hour = date.getHours();
+    const greetings = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : hour < 21 ? "Good Evening" : "Good Night";
 
     const [workState, setWorkState] = useState<"WORKING" | "ON_BREAK">("WORKING");
     const [breakStartTime, setBreakStartTime] = useState<Date | null>(null);
@@ -137,7 +140,7 @@ export default function ManagerDashboard() {
                 headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
             });
             const data = await res.json();
-            
+
             if (start) {
                 setBreakStartTime(new Date(data.breakStartTime));
                 setWorkState("ON_BREAK");
@@ -170,35 +173,93 @@ export default function ManagerDashboard() {
     const totalActual = taskChartData.reduce((s, t) => s + t.Actual, 0);
     const efficiency = totalAssigned > 0 ? Math.round((totalActual / totalAssigned) * 100) : 100;
 
-    return (
-        <Layout>
-            <div className={`p-4 sm:p-8 space-y-8 min-h-screen transition-all duration-300 ${workState === "ON_BREAK" ? "blur-sm pointer-events-none scale-[0.99]" : ""}`}>
+    const calculateProgress = (task: any) => {
+        switch (task.status) {
+            case "TODO": return 0;
+            case "WORKING":
+            case "IN_PROGRESS": {
+                if (task.hoursUsed && task.assignedHours && task.assignedHours > 0) {
+                    const calculated = Math.round((task.hoursUsed / task.assignedHours) * 100);
+                    // Ensure at least 30% progress when started, cap at 90% until done
+                    return Math.max(30, Math.min(calculated, 90));
+                }
+                return 30; // Default to 30% if hours data is missing but task is started
+            }
+            case "STUCK": return 30;
+            case "DONE": return 100;
+            default: return 0;
+        }
+    };
 
-                {/* HEADER */}
-                <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-200 pb-6">
+    const getPriorityColor = (priority: string) => {
+        if (priority === "HIGH") return "bg-red-600";
+        if (priority === "MEDIUM") return "bg-blue-700";
+        return "bg-green-600";
+    };
+
+    return (
+        <Layout
+            headerActions={
+                <div className="flex items-center gap-4">
+                    {/* ⏰ Clean Login Time */}
+                    {loginTime && (
+                        <div className="hidden md:flex items-center gap-2 text-sm text-slate-600">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span className="font-medium">{loginTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                    )}
+
+                    {/* ☕ Simple Take a Break Button */}
+                    <button
+                        onClick={() => handleBreak(true)}
+                        disabled={breakLoading}
+                        className="px-5 py-2 bg-[#0000cc] hover:bg-[#0000dd] text-white text-sm font-semibold rounded-lg transition-all duration-200 hover:shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {breakLoading ? (
+                            <div className="flex items-center gap-2">
+                                <div className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                <span>Loading...</span>
+                            </div>
+                        ) : (
+                            "Take a Break"
+                        )}
+                    </button>
+                </div>
+            }
+        >
+            <div className={`space-y-8 min-h-screen transition-all duration-300 ${workState === "ON_BREAK" ? "blur-sm pointer-events-none scale-[0.99]" : ""}`}>
+
+                {/* SIMPLIFIED HEADER */}
+                <header className="border-b border-slate-100 pb-6 mb-8">
                     <div className="space-y-1">
                         <h1 className="text-3xl font-extrabold tracking-tight text-[#0000cc]">My Task Performance Dashboard</h1>
                         <p className="text-slate-500">
-                            <span className="font-semibold text-lg">Good Evening 👋</span> <br />
+                            <span className="font-semibold text-lg">{greetings} 👋</span> <br />
                             Task Management Hub • {new Date().toLocaleDateString("en-US", { dateStyle: "long" })}
                         </p>
                     </div>
-
-                    <div className="flex flex-col items-end gap-3">
-                        <Button
-                            onClick={() => handleBreak(true)}
-                            disabled={breakLoading}
-                            className="bg-[#0000cc] hover:bg-[#0000cc]/90 text-white font-bold px-8 py-6 rounded-2xl shadow-lg shadow-blue-200 min-w-[160px]"
-                        >
-                            {breakLoading ? (
-                                <Loader2 className="h-5 w-5 animate-spin" />
-                            ) : (
-                                "Take a Break"
-                            )}
-                        </Button>
-                        {loginTime && <p className="text-xs pr-3 text-slate-400">Logged in at: <span className="font-medium">{loginTime.toLocaleTimeString()}</span></p>}
-                    </div>
                 </header>
+
+                {/* 📱 MOBILE ACTIONS */}
+                <div className="lg:hidden flex items-center justify-between p-4 bg-white rounded-lg border border-slate-200 mb-6">
+                    {loginTime && (
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span className="font-medium">{loginTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                    )}
+                    <button
+                        onClick={() => handleBreak(true)}
+                        disabled={breakLoading}
+                        className="px-4 py-2 bg-[#0000cc] hover:bg-[#0000dd] text-white text-sm font-semibold rounded-lg transition-all active:scale-95 disabled:opacity-50"
+                    >
+                        {breakLoading ? "Loading..." : "Take a Break"}
+                    </button>
+                </div>
 
                 {/* STATS */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -270,7 +331,7 @@ export default function ManagerDashboard() {
                             </CardContent>
                         </Card>
 
-                        <div className="mt-6 flex items-center gap-4 p-5 bg-red-50 border border-red-100 rounded-3xl">
+                        {/* <div className="mt-6 flex items-center gap-4 p-5 bg-red-50 border border-red-100 rounded-3xl">
                             <div className="bg-red-500 p-2.5 rounded-2xl shadow-lg shadow-red-200">
                                 <AlertCircle className="h-6 w-6 text-white" />
                             </div>
@@ -278,7 +339,7 @@ export default function ManagerDashboard() {
                                 <h4 className="font-bold text-red-900 text-sm">Pending Tasks Reminder</h4>
                                 <p className="text-xs text-red-700">You have 8 task(s) that need attention to meet deadlines.</p>
                             </div>
-                        </div>
+                        </div> */}
                     </div>
 
                     {/* RIGHT: TASK LIST */}
@@ -293,28 +354,31 @@ export default function ManagerDashboard() {
                             <CardContent className="p-6 space-y-4 overflow-y-auto max-h-[600px] flex-1">
                                 {tasks.length > 0 ? (
                                     /* SHOW TASK LIST IF TASKS EXIST */
-                                    tasks.map((task) => (
-                                        <div key={task.id} className="p-5 rounded-[1rem] border border-slate-100 bg-white shadow-sm border-l-4 border-l-amber-500 relative transition-all hover:shadow-md hover:scale-[1.01]">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div className="space-y-0.5">
-                                                    <h4 className="font-bold text-slate-900 text-[1rem]">{task.title}</h4>
-                                                    <p className="text-[10px] text-[#0000cc] font-black uppercase tracking-widest">{task.project || "GENERAL"}</p>
+                                    tasks.map((task) => {
+                                        const progress = calculateProgress(task);
+                                        return (
+                                            <div key={task.id} className="p-5 rounded-[1rem] border border-slate-100 bg-white shadow-sm border-l-4 border-l-amber-500 relative transition-all hover:shadow-md hover:scale-[1.01]">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div className="space-y-0.5">
+                                                        <h4 className="font-bold text-slate-900 text-[1rem]">{task.title}</h4>
+                                                        <p className="text-[10px] text-[#0000cc] font-black uppercase tracking-widest">GENERAL</p>
+                                                    </div>
+                                                    <Badge className={`${getPriorityColor(task.priority || "MEDIUM")} text-[9px] px-2 py-0.5 rounded-md uppercase font-black text-white`}>{task.priority || "MEDIUM"}</Badge>
                                                 </div>
-                                                <Badge className="bg-blue-700 text-[9px] px-2 py-0.5 rounded-md uppercase font-black">MEDIUM</Badge>
-                                            </div>
-                                            <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold mb-3 mt-2">
-                                                <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> 0/?h</span>
-                                                <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Due: 1/14/2026</span>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <div className="flex justify-between text-[10px] font-black uppercase tracking-tighter text-slate-400">
-                                                    <span>Progress</span>
-                                                    <span className="text-[#0000cc]">0%</span>
+                                                <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold mb-3 mt-2">
+                                                    <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {task.hoursUsed || 0}/{task.assignedHours || '?'}h</span>
+                                                    <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Due: {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "No Date"}</span>
                                                 </div>
-                                                <Progress value={0} className="h-1.5 bg-slate-100" />
+                                                <div className="space-y-1">
+                                                    <div className="flex justify-between text-[10px] font-black uppercase tracking-tighter text-slate-400">
+                                                        <span>Progress</span>
+                                                        <span className="text-[#0000cc]">{progress}%</span>
+                                                    </div>
+                                                    <Progress value={progress} className="h-1.5 bg-slate-100" />
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))
+                                        );
+                                    })
                                 ) : (
                                     /* SHOW EMPTY STATE MESSAGE IF NO TASKS */
                                     <div className="flex flex-col items-center justify-center h-full min-h-[300px] space-y-4 animate-in fade-in duration-500">

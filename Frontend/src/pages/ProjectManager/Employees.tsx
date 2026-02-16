@@ -718,7 +718,8 @@ const EmployeeTaskView = ({
             {/* ... (Thead remains same) ... */}
             <thead className="bg-[#0000cc]/10 text-[#0000cc] uppercase text-xs font-semibold">
               <tr>
-                <th className="px-6 py-3">Task</th>
+
+                <th className="px-6 py-3 min-w-[350px]">Task</th>
                 <th className="px-6 py-3">Status</th>
                 <th className="px-6 py-3">Priority</th>
                 <th className="px-6 py-3">Due Date</th>
@@ -734,7 +735,8 @@ const EmployeeTaskView = ({
                   className="border-b last:border-b-0 hover:bg-gray-50 transition"
                 >
                   {/* ... (Other columns remain same) ... */}
-                  <td className="px-6 py-4 font-medium text-gray-800">
+
+                  <td className="px-6 py-4 font-medium text-gray-800 whitespace-normal break-words leading-relaxed max-w-[400px]">
                     {task.title}
                   </td>
                   <td className="px-6 py-4">
@@ -828,7 +830,8 @@ const EmployeeTaskView = ({
               className="p-3 border border-gray-200 rounded-lg bg-white shadow-sm"
             >
               <div className="flex justify-between items-start mb-2">
-                <h4 className="font-bold text-sm text-gray-800 break-words pr-2">
+
+                <h4 className="font-bold text-sm text-gray-800 whitespace-normal break-words leading-snug pr-2">
                   {task.title}
                 </h4>
                 <TaskActionMenu

@@ -63,6 +63,41 @@ router.post("/:taskId", auth_1.auth, async (req, res) => {
                 },
             },
         });
+        // 🔔 NOTIFICATION LOGIC
+        let notifyUserId = null;
+        // Determine recipient based on who commented
+        if (isManager && task.assigneeId && task.assigneeId !== userId) {
+            notifyUserId = task.assigneeId;
+        }
+        else if (isAssignee && task.createdById && task.createdById !== userId) {
+            notifyUserId = task.createdById;
+        }
+        else {
+            // Fallback: If some third party (admin/project manager not directly assigned) comments?
+            // For now, stick to basic flow: Operator <-> Manager
+            if (userId === task.createdById && task.assigneeId)
+                notifyUserId = task.assigneeId;
+            else if (userId === task.assigneeId && task.createdById)
+                notifyUserId = task.createdById;
+        }
+        if (notifyUserId) {
+            try {
+                await db_1.default.notification.create({
+                    data: {
+                        userId: notifyUserId,
+                        tenantId,
+                        type: "TASK_COMMENT",
+                        title: `New comment: ${task.title ? task.title.substring(0, 20) : "Task"}...`,
+                        message: content.substring(0, 50),
+                        resourceId: taskId,
+                    },
+                });
+            }
+            catch (notifyErr) {
+                console.error("Failed to create notification", notifyErr);
+                // Don't fail the request, just log
+            }
+        }
         res.json(comment);
     }
     catch (err) {

@@ -8,6 +8,7 @@ const queue_1 = require("../lib/queue");
 const db_1 = __importDefault(require("../db"));
 const reportPdfWorker_1 = require("./reportPdfWorker");
 const email_1 = require("../lib/email");
+const reportEmail_1 = require("../lib/reportEmail");
 // Remove old commented code and clean up imports
 const workerName = "report-generation";
 const reportWorker = new bullmq_1.Worker(workerName, async (job) => {
@@ -141,6 +142,28 @@ const reportWorker = new bullmq_1.Worker(workerName, async (job) => {
         data: { status: "READY" },
     });
     console.log(`Report ${reportId} generated successfully.`);
+    // ----------------------------------
+    // 5️⃣ Send Email Notification
+    // ----------------------------------
+    try {
+        if (generator.email) {
+            const reportPageUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reports`;
+            await (0, reportEmail_1.sendReportCompletionEmail)({
+                to: generator.email,
+                reportTitle: report.title,
+                reportType: scope === "EMPLOYEE" ? "Individual Employee Report" : "Team Report",
+                fromDate: report.fromDate,
+                toDate: report.toDate,
+                downloadUrl: reportPageUrl,
+                generatorName: generator.name || generator.email,
+            });
+            console.log(`✅ Email notification sent to ${generator.email}`);
+        }
+    }
+    catch (emailError) {
+        console.error("Failed to send completion email:", emailError);
+        // Don't fail the job if email fails
+    }
 }, {
     connection: queue_1.connection,
     // Add logic to keep connection alive or restart on unexpected errors?

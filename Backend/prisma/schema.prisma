@@ -26,7 +26,10 @@ model User {
   taskWorkLogs        TaskWorkLog[]
   attendances         UserAttendance[]   @relation("UserAttendances")
   generatedReports Report[] @relation("UserGeneratedReports")
+  
   employeeReportSnapshots EmployeeReportSnapshot[]
+  notifications      Notification[]
+
 
   @@unique([email, tenantId])
 }
@@ -283,8 +286,26 @@ enum ReportType {
   CUSTOM
 }
 
+
 enum ReportScope {
   TEAM
   EMPLOYEE
   DEPARTMENT
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  userId     String
+  tenantId   String
+  type       String   // "TASK_COMMENT" or others
+  title      String
+  message    String
+  resourceId String?  // ID of the related resource (e.g. Task ID)
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
 }

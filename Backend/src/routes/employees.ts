@@ -1879,7 +1879,16 @@ router.get("/dashboard/manager/today-performance", auth, async (req, res) => {
         },
       },
       include: {
-        task: true,
+        task: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            priority: true,
+            dueDate: true,
+            assignedHours: true,
+          }
+        },
         user: true,
       },
       orderBy: { startTime: "asc" },
@@ -1893,8 +1902,13 @@ router.get("/dashboard/manager/today-performance", auth, async (req, res) => {
 
       if (!taskMap[taskId]) {
         taskMap[taskId] = {
+          id: log.task.id,
           taskId,
           title: log.task.title,
+          status: log.task.status,
+          priority: log.task.priority,
+          dueDate: log.task.dueDate,
+          assignedHours: log.task.assignedHours,
           assignedMinutes: (log.task.assignedHours || 0) * 60,
           actualMinutes: 0,
           startTime: log.startTime,
@@ -1939,9 +1953,18 @@ router.get("/dashboard/manager/today-performance", auth, async (req, res) => {
       totalAssignedMinutes += task.assignedMinutes;
       totalActualMinutes += task.actualMinutes;
 
+      // Calculate hoursUsed from actualMinutes
+      const hoursUsed = Math.round((task.actualMinutes / 60) * 10) / 10;
+
       return {
+        id: task.id,
         taskId: task.taskId,
         title: task.title,
+        status: task.status,
+        priority: task.priority,
+        dueDate: task.dueDate,
+        assignedHours: task.assignedHours,
+        hoursUsed: hoursUsed, // Calculated from work logs
         assignedMinutes: task.assignedMinutes,
         actualMinutes: task.actualMinutes,
         varianceMinutes: task.actualMinutes - task.assignedMinutes,

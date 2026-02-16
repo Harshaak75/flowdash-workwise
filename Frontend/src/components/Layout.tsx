@@ -13,10 +13,13 @@ import {
   X,
   KanbanIcon,
 } from "lucide-react";
+
 import { useAuth } from "@/pages/AuthContext";
+import { NotificationBell } from "./NotificationBell";
 
 interface LayoutProps {
   children: ReactNode;
+  headerActions?: ReactNode; // 🟢 New Prop for injecting content into Navbar
 }
 
 // --- LOGO VARIABLES ---
@@ -33,15 +36,13 @@ const LOGOUT_MESSAGES = [
   "Take a well-deserved break ☕",
 ];
 
-export const Layout = ({ children }: LayoutProps) => {
+export const Layout = ({ children, headerActions }: LayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, loading, setUser, } = useAuth();
+  const { user, loading, setUser } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutMessageIndex, setLogoutMessageIndex] = useState(0);
-
-
 
   useEffect(() => {
     if (!isLoggingOut) return;
@@ -84,7 +85,6 @@ export const Layout = ({ children }: LayoutProps) => {
   };
 
   const getNavItems = () => {
-    // ... (Navigation logic remains the same)
     const common = [
       { icon: LayoutDashboard, label: "Dashboard", path: `/${role}` },
     ];
@@ -140,9 +140,13 @@ export const Layout = ({ children }: LayoutProps) => {
         >
           {isSidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </Button>
-        {/* Mobile Logo (Right) */}
-        <div className="h-8 w-8 bg-red-600 rounded-full flex items-center justify-center text-white text-lg font-bold order-2">
-          {MOBILE_LOGO_PLACEHOLDER}
+
+        {/* Mobile Logo + Bell (Right) */}
+        <div className="flex items-center gap-4 order-2">
+          <NotificationBell />
+          <div className="h-8 w-8 bg-red-600 rounded-full flex items-center justify-center text-white text-lg font-bold">
+            {MOBILE_LOGO_PLACEHOLDER}
+          </div>
         </div>
       </header>
 
@@ -197,7 +201,7 @@ export const Layout = ({ children }: LayoutProps) => {
           <div className="bg-white/10 rounded-lg p-3 text-sm mb-3">
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4 text-white/80" />
-              <span className="capitalize">{role}</span>
+              <span className="capitalize">{role == "operator" ? "Employee" : role}</span>
             </div>
             <p className="text-xs text-white/70 truncate">
               {user.email}
@@ -222,14 +226,39 @@ export const Layout = ({ children }: LayoutProps) => {
         ></div>
       )}
 
-      {/* 🟢 MAIN CONTENT - **Handles the left margin offset on large screens** 🟢 */}
+
+      {/* 🟢 MAIN CONTENT */}
       {/* Scrollable content area starts here */}
-      <main className="lg:ml-60 flex-1 overflow-y-auto min-h-screen">
+      <main className="lg:ml-60 flex-1 overflow-y-auto min-h-screen flex flex-col bg-gray-50/10">
+
+        {/* DESKTOP HEADER */}
+        <div className="hidden lg:flex items-center justify-between px-8 py-4 bg-white/90 backdrop-blur border-b sticky top-0 z-20 shadow-sm h-16">
+
+          {/* 🟢 Left Side: Injected Actions (Take Break, Login Time) */}
+          <div className="flex-1 flex items-center gap-4">
+            {headerActions}
+          </div>
+
+          {/* Right Side: Notification & Profile */}
+          <div className="flex items-center gap-4">
+            <NotificationBell />
+            <div className="h-8 w-px bg-gray-200 mx-1" />
+            <div className="flex items-center gap-3">
+              <div className="text-right leading-tight">
+                <p className="text-sm font-semibold text-gray-900 capitalize">{role == "operator" ? "Employee" : role}</p>
+                <p className="text-xs text-gray-500">{user?.email}</p>
+              </div>
+              <div className="h-9 w-9 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-bold shadow-md">
+                {user?.email?.[0]?.toUpperCase()}
+              </div>
+            </div>
+          </div>
+        </div>
         <div
           className={
             location.pathname.includes("/hrm")
-              ? "pt-6 pl-2 pr-6"
-              : "p-4 sm:p-6 md:p-8"
+              ? "pt-6 pl-2 pr-6" // Reduced top padding could happen here too
+              : "px-4 sm:px-6 md:px-8 py-4" // REDUCED TOP PADDING FOR DASHBOARDS
           }
         >
           {children}

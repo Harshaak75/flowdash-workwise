@@ -13,6 +13,7 @@ import kanbanBoard from "./routes/Kanban.routes"
 import reportRoutes from "./routes/report";
 import reportAnalyticsRouter from "./routes/reportAnalytics";
 import reportDownloadRouter from "./routes/reportDownload";
+import NotificationRoutes from "./routes/Notification";
 
 const app = express();
 
@@ -20,7 +21,7 @@ app.use(cookieParser());
 
 app.use(
   cors({
-    origin: ["http://localhost:8080","https://flowbit.dotspeaks.com","http://194.163.139.103:4001", "http://localhost:5000", "http://localhost:8082"], // your frontend origin
+    origin: ["http://localhost:8080", "https://flowbit.dotspeaks.com", "http://194.163.139.103:4001", "http://localhost:5000", "http://localhost:8082"], // your frontend origin
     credentials: true, // ✅ allows cookies
   })
 );
@@ -47,6 +48,7 @@ app.use("/api/kanbanBoard", kanbanBoard)
 app.use("/api/reports", reportRoutes);
 app.use("/api/reports/analytics", reportAnalyticsRouter);
 app.use("/api/reports/download", reportDownloadRouter);
+app.use("/api/notifications", NotificationRoutes);
 
 const PORT = Number(process.env.PORT) || 4000;
 app.listen(PORT, () => console.log(`API listening on :${PORT}`));
