@@ -84,10 +84,18 @@ export async function generateEmployeeReportPDF(
         browser = await puppeteer.launch({
             headless: true,
             userDataDir: tmpProfilePath, // Unique profile per request
+            timeout: 60000, // ✅ Increase timeout to 60 seconds
+            protocolTimeout: 60000, // ✅ Increase protocol timeout
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage" // Fixes some memory/crash issues
+                "--disable-dev-shm-usage", // Fixes some memory/crash issues
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+                "--disable-extensions",
+                "--no-first-run",
+                "--no-zygote",
+                "--single-process", // ✅ Important for Docker
             ],
         });
         const page = await browser.newPage();
