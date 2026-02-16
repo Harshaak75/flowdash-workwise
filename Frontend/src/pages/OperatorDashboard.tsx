@@ -44,6 +44,7 @@ interface Task {
   status: "TODO" | "WORKING" | "STUCK" | "DONE";
   hoursAllocated?: number;
   hoursUsed?: number;
+  assignedHours?: number | null;
   dueDate?: string;
   priority: "HIGH" | "MEDIUM" | "LOW";
   isDeleted?: boolean;
@@ -77,10 +78,10 @@ interface Stats {
 }
 
 // Colors
-const COLOR_PRIMARY = "#0000cc"; 
-const COLOR_DANGER = "#dc2626";  
-const COLOR_SUCCESS = "#059669"; 
-const COLOR_WARNING = "#d97706"; 
+const COLOR_PRIMARY = "#0000cc";
+const COLOR_DANGER = "#dc2626";
+const COLOR_SUCCESS = "#059669";
+const COLOR_WARNING = "#d97706";
 
 const StatsCardWrapper = ({ children }: { children: ReactNode }) => (
   <div className="h-full flex flex-col transition-transform duration-200 hover:-translate-y-1">{children}</div>
@@ -110,18 +111,18 @@ const TaskTimeTooltip = ({ active, payload }: any) => {
       <div className="grid grid-cols-2 gap-x-4 gap-y-1">
         <p className="text-slate-500 text-[10px] uppercase font-bold">Assigned</p>
         <p className="text-slate-700 font-semibold">{data.Assigned} min</p>
-        
+
         <p className="text-slate-500 text-[10px] uppercase font-bold">Actual</p>
         <p className="text-slate-700 font-semibold">{data.Actual} min</p>
-        
+
         <p className="text-slate-500 text-[10px] uppercase font-bold">Started</p>
         <p className="text-blue-600 font-medium">
-          {data.startTime ? new Date(data.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "Not started"}
+          {data.startTime ? new Date(data.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Not started"}
         </p>
-        
+
         <p className="text-slate-500 text-[10px] uppercase font-bold">Ended</p>
         <p className="text-blue-600 font-medium">
-          {data.endTime ? new Date(data.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "In progress"}
+          {data.endTime ? new Date(data.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "In progress"}
         </p>
       </div>
     </div>
@@ -140,7 +141,7 @@ export default function OperatorDashboard() {
 
   const { loginTime, setLoginTime } = useAuth();
   const [breakStartTime, setBreakStartTime] = useState<Date | null>(null);
-  
+
   const date = new Date();
   const hour = date.getHours();
   const greetings = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : hour < 21 ? "Good Evening" : "Good Night";
@@ -150,12 +151,12 @@ export default function OperatorDashboard() {
     const syncAttendanceState = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/employees/attendance/today`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-            credentials: "include",
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+          credentials: "include",
         });
         if (!res.ok) return;
         const data = await res.json();
-        
+
         if (data.loginTime) setLoginTime(new Date(data.loginTime));
         if (data.onBreak) {
           setWorkState("ON_BREAK");
@@ -181,7 +182,6 @@ export default function OperatorDashboard() {
   }, []);
 
   const getDashboardData = async () => {
-    await new Promise((resolve) => setTimeout(resolve, 800));
     try {
       const response = await axios.get(`${API_BASE_URL}/tasks/Dashboard`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -193,13 +193,31 @@ export default function OperatorDashboard() {
     finally { setLoading(false); }
   };
 
+  // Initial fetch
   useEffect(() => { getDashboardData(); }, []);
+
+  // 🔄 Auto-refresh every 10 seconds to show real-time progress
+  useEffect(() => {
+    const interval = setInterval(() => {
+      getDashboardData();
+    }, 10000); // Refresh every 10 seconds
+
+    return () => clearInterval(interval);
+  }, []);
 
   const calculateProgress = (task: any) => {
     switch (task.status) {
       case "TODO": return 0;
-      case "WORKING": return task.hoursUsed && task.assignedHours ? Math.min(Math.round((task.hoursUsed / task.assignedHours) * 100), 90) : 20;
-      case "STUCK": return 20;
+      case "WORKING":
+      case "IN_PROGRESS": {
+        if (task.hoursUsed && task.assignedHours && task.assignedHours > 0) {
+          const calculated = Math.round((task.hoursUsed / task.assignedHours) * 100);
+          // Ensure at least 30% progress when started, cap at 90% until done
+          return Math.max(30, Math.min(calculated, 90));
+        }
+        return 30; // Default to 30% if hours data is missing but task is started
+      }
+      case "STUCK": return 30;
       case "DONE": return 100;
       default: return 0;
     }
@@ -256,42 +274,72 @@ export default function OperatorDashboard() {
     endTime: t.endTime,
   }));
 
-if (loading) {
-  return (
-    <Layout>
-      <div className="p-4 sm:p-8 space-y-8 min-h-screen">
-        {/* Header Skeleton */}
-        <div className="flex justify-between items-end border-b pb-6">
-          <div className="space-y-2">
-            <div className="h-8 w-64 bg-slate-200 animate-pulse rounded" />
-            <div className="h-4 w-48 bg-slate-100 animate-pulse rounded" />
+  if (loading) {
+    return (
+      <Layout>
+        <div className="p-4 sm:p-8 space-y-8 min-h-screen">
+          {/* Header Skeleton */}
+          <div className="flex justify-between items-end border-b pb-6">
+            <div className="space-y-2">
+              <div className="h-8 w-64 bg-slate-200 animate-pulse rounded" />
+              <div className="h-4 w-48 bg-slate-100 animate-pulse rounded" />
+            </div>
+            <div className="h-10 w-32 bg-slate-200 animate-pulse rounded-xl" />
           </div>
-          <div className="h-10 w-32 bg-slate-200 animate-pulse rounded-xl" />
-        </div>
 
-        {/* Stats Grid Skeleton */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-32 bg-slate-100 animate-pulse rounded-2xl" />
-          ))}
-        </div>
+          {/* Stats Grid Skeleton */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-32 bg-slate-100 animate-pulse rounded-2xl" />
+            ))}
+          </div>
 
-        {/* Bento Grid Skeleton */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-7 h-[400px] bg-slate-100 animate-pulse rounded-2xl" />
-          <div className="lg:col-span-5 h-[400px] bg-slate-100 animate-pulse rounded-2xl" />
+          {/* Bento Grid Skeleton */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-7 h-[400px] bg-slate-100 animate-pulse rounded-2xl" />
+            <div className="lg:col-span-5 h-[400px] bg-slate-100 animate-pulse rounded-2xl" />
+          </div>
         </div>
-      </div>
-    </Layout>
-  );
-}
+      </Layout>
+    );
+  }
 
   return (
-    <Layout>
-      <div className={`p-4 sm:p-8 space-y-8 min-h-screen transition-all duration-300 ${workState === "ON_BREAK" ? "pointer-events-none blur-sm" : ""}`}>
-        
+    <Layout
+      headerActions={
+        <div className="flex items-center gap-4">
+          {/* ⏰ Clean Login Time */}
+          {loginTime && (
+            <div className="hidden md:flex items-center gap-2 text-sm text-slate-600">
+              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="font-medium">{loginTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          )}
+
+          {/* ☕ Simple Take a Break Button */}
+          <button
+            disabled={workState === "ON_BREAK" || breakActionLoading}
+            onClick={handleTakeBreak}
+            className="px-5 py-2 bg-[#0000cc] hover:bg-[#0000dd] text-white text-sm font-semibold rounded-lg transition-all duration-200 hover:shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {breakActionLoading ? (
+              <div className="flex items-center gap-2">
+                <div className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                <span>Loading...</span>
+              </div>
+            ) : (
+              "Take a Break"
+            )}
+          </button>
+        </div>
+      }
+    >
+      <div className={`space-y-8 min-h-screen transition-all duration-300 ${workState === "ON_BREAK" ? "pointer-events-none blur-sm" : ""}`}>
+
         {/* HEADER */}
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-200 pb-6">
+        <header className="border-b border-slate-100 pb-6 mb-8">
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight text-[#0000cc]">My Task Performance Dashboard</h1>
             <p className="text-slate-500 mt-1">
@@ -299,19 +347,26 @@ if (loading) {
               Task Management Hub • {new Date().toLocaleDateString("en-US", { dateStyle: "long" })}
             </p>
           </div>
-
-          <div className="flex flex-col items-end gap-3">
-             <button
-              disabled={workState === "ON_BREAK" || breakActionLoading}
-              onClick={handleTakeBreak}
-              style={{ backgroundColor: COLOR_PRIMARY }}
-              className={`px-6 py-2.5 rounded-xl font-bold text-white shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center gap-2 ${breakActionLoading ? "opacity-70 cursor-not-allowed" : "hover:opacity-90"}`}
-            >
-              {breakActionLoading ? <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : "Take a Break"}
-            </button>
-            {loginTime && <p className="text-xs text-slate-400">Logged in at: <span className="font-medium">{loginTime.toLocaleTimeString()}</span></p>}
-          </div>
         </header>
+
+        {/* 📱 MOBILE ACTIONS */}
+        <div className="lg:hidden flex items-center justify-between p-4 bg-white rounded-lg border border-slate-200 mb-6">
+          {loginTime && (
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="font-medium">{loginTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          )}
+          <button
+            disabled={workState === "ON_BREAK" || breakActionLoading}
+            onClick={handleTakeBreak}
+            className="px-4 py-2 bg-[#0000cc] hover:bg-[#0000dd] text-white text-sm font-semibold rounded-lg transition-all active:scale-95 disabled:opacity-50"
+          >
+            {breakActionLoading ? "Loading..." : "Take a Break"}
+          </button>
+        </div>
 
         {/* STATS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -325,12 +380,12 @@ if (loading) {
             <StatsCard title="Today Assigned" value={`${Math.round((todaySummary?.totalAssignedMinutes ?? 0) / 60)}h`} icon={Target} color="primary" />
           </StatsCardWrapper>
           <StatsCardWrapper>
-            <StatsCard 
-                title="Efficiency" 
-                value={`${todaySummary?.efficiencyPercent ?? 0}%`} 
-                icon={TrendingUp} 
-                color={(todaySummary?.efficiencyPercent ?? 0) >= 100 ? "destructive" : "success"}
-                trend={(todaySummary?.efficiencyPercent ?? 100) >= 100 ? "Over-utilized" : "Within estimate"}
+            <StatsCard
+              title="Efficiency"
+              value={`${todaySummary?.efficiencyPercent ?? 0}%`}
+              icon={TrendingUp}
+              color={(todaySummary?.efficiencyPercent ?? 0) >= 100 ? "destructive" : "success"}
+              trend={(todaySummary?.efficiencyPercent ?? 100) >= 100 ? "Over-utilized" : "Within estimate"}
             />
           </StatsCardWrapper>
         </div>
@@ -341,8 +396,8 @@ if (loading) {
             <Card className="border-none shadow-sm overflow-hidden bg-white">
               <CardHeader className="bg-slate-50/50 border-b border-slate-100">
                 <CardTitle className="text-lg font-bold text-[#0000cc] flex items-center gap-2">
-                   <Clock className="h-5 w-5 text-red-600" />
-                   Today’s Task Time Usage
+                  <Clock className="h-5 w-5 text-red-600" />
+                  Today’s Task Time Usage
                 </CardTitle>
                 <CardDescription>Assigned vs actual working time (today only)</CardDescription>
               </CardHeader>
@@ -391,7 +446,7 @@ if (loading) {
                 <Badge variant="secondary" className="rounded-md bg-blue-100 text-[#0000cc]">{tasks.length} Active</Badge>
               </CardHeader>
               <CardContent className="flex-1 overflow-y-auto max-h-[500px] p-4 space-y-3">
-                {tasks.map((task) => (
+                {tasks.map((task: any) => (
                   <div key={task.id} className={`p-4 rounded-xl border border-slate-100 transition-all hover:shadow-md bg-white ${getPriorityStyles(task.priority)}`}>
                     <div className="flex justify-between items-start mb-2 gap-2">
                       <div className="flex-1 min-w-0">
@@ -401,7 +456,7 @@ if (loading) {
                       <Badge className={`${task.priority === 'HIGH' ? 'bg-red-600' : 'bg-[#0000cc]'} text-[9px] uppercase`}>{task.priority.toLowerCase()}</Badge>
                     </div>
                     <div className="flex items-center gap-3 text-[10px] text-slate-500 mb-3">
-                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {task.hoursUsed || 0}/{task.hoursAllocated || '?'}h</span>
+                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {task.hoursUsed || 0}/{task.assignedHours || '?'}h</span>
                       {task.dueDate && <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Due: {new Date(task.dueDate).toLocaleDateString()}</span>}
                     </div>
                     <div className="space-y-1">

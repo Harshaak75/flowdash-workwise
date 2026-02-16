@@ -99,6 +99,7 @@ router.post(
         fileUrl = data.publicUrl;
       }
 
+
       // ✅ CREATE TASK WITH TENANT ID
       const task = await prisma.task.create({
         data: {
@@ -117,6 +118,25 @@ router.post(
           fileUrl_manager: fileUrl,
         },
       });
+
+      // 🔔 NOTIFICATION LOGIC
+      if (assigneeId) {
+        try {
+          const truncatedTitle = title.length > 20 ? title.substring(0, 20) + "..." : title;
+          await prisma.notification.create({
+            data: {
+              userId: assigneeId,
+              tenantId,
+              type: "TASK_ASSIGNED",
+              title: "New Task Assigned",
+              message: `You have been assigned a new task: ${truncatedTitle}`,
+              resourceId: task.id
+            }
+          });
+        } catch (e) {
+          console.error("Failed to create notification", e);
+        }
+      }
 
       // send the email notification to the employee
       if (assigneeId) {
@@ -265,11 +285,30 @@ router.patch(
       if (newAssigneeId) updateData.assigneeId = newAssigneeId;
       if (newFileUrl) updateData.fileUrl_manager = newFileUrl;
 
+
       // 🔒 STEP 2: UPDATE WITH TENANT CONDITION
       const task = await prisma.task.update({
         where: { id: existingTask.id },
         data: updateData,
       });
+
+      if (newAssigneeId && newAssigneeId !== existingTask.assigneeId) {
+        try {
+          const truncatedTitle = task.title.length > 20 ? task.title.substring(0, 20) + "..." : task.title;
+          await prisma.notification.create({
+            data: {
+              userId: newAssigneeId,
+              tenantId,
+              type: "TASK_ASSIGNED",
+              title: "Task Reassigned To You",
+              message: `You have been assigned: ${truncatedTitle}`,
+              resourceId: task.id
+            }
+          });
+        } catch (e) {
+          console.error("Failed to create reassignment notification", e);
+        }
+      }
 
       res.json(task);
     } catch (error: any) {
@@ -542,6 +581,7 @@ router.post(
         });
       }
 
+
       // ✅ 4️⃣ Perform transfer
       const updated = await prisma.task.update({
         where: { id },
@@ -551,6 +591,23 @@ router.post(
           updatedAt: new Date(),
         },
       });
+
+      // 🔔 NOTIFICATION
+      try {
+        const truncatedTitle = updated.title.length > 20 ? updated.title.substring(0, 20) + "..." : updated.title;
+        await prisma.notification.create({
+          data: {
+            userId: assigneeId,
+            tenantId,
+            type: "TASK_TRANSFERRED",
+            title: "Task Transferred To You",
+            message: `You have been assigned: ${truncatedTitle}`,
+            resourceId: updated.id
+          }
+        });
+      } catch (e) {
+        console.error("Failed to create transfer notification", e);
+      }
 
       res.json(updated);
 
@@ -630,22 +687,56 @@ router.get(
         return res.status(400).json({ message: "Invalid user context" });
       }
 
-      // 🔒 Tenant-safe task fetch
+      // 🔒 Tenant-safe task fetch with work logs
       const tasks = await prisma.task.findMany({
         where: {
           assigneeId: userId,
           tenantId,
           isDeleted: false,
         },
+        include: {
+          taskWorkLogs: {
+            where: {
+              userId: userId,
+            },
+            select: {
+              startTime: true,
+              endTime: true,
+            },
+          },
+        },
         orderBy: { dueDate: "asc" },
       });
 
+      // Calculate hoursUsed for each task from work logs
+      const tasksWithHours = tasks.map(task => {
+        let totalMinutes = 0;
+
+        for (const log of task.taskWorkLogs) {
+          const end = log.endTime ?? new Date();
+          const minutes = Math.max(
+            0,
+            Math.round((end.getTime() - log.startTime.getTime()) / 60000)
+          );
+          totalMinutes += minutes;
+        }
+
+        const hoursUsed = Math.round((totalMinutes / 60) * 10) / 10;
+
+        // Remove taskWorkLogs from response and add hoursUsed
+        const { taskWorkLogs, ...taskData } = task;
+        return {
+          ...taskData,
+          hoursUsed,
+        };
+      });
+
       // ---------- STATS ----------
-      const totalTasks = tasks.length;
-      const completedTasks = tasks.filter(t => t.status === "DONE").length;
-      const pendingTasks = tasks.filter(t => t.status === "TODO").length;
-      const inProgressTasks = tasks.filter(t => t.status === "WORKING").length;
-      const stuckTasks = tasks.filter(t => t.status === "STUCK").length;
+      const totalTasks = tasksWithHours.length;
+      const completedTasks = tasksWithHours.filter(t => t.status === "DONE").length;
+      const pendingTasks = tasksWithHours.filter(t => t.status === "TODO").length;
+      const inProgressTasks = tasksWithHours.filter(t => t.status === "WORKING").length;
+      const stuckTasks = tasksWithHours.filter(t => t.status === "STUCK").length;
 
       const completionRate =
         totalTasks > 0
@@ -665,7 +756,7 @@ router.get(
         endOfWeek.setDate(startOfWeek.getDate() + 6);
         endOfWeek.setHours(23, 59, 59, 999);
 
-        const weekTasks = tasks.filter(
+        const weekTasks = tasksWithHours.filter(
           t =>
             t.updatedAt >= startOfWeek &&
             t.updatedAt <= endOfWeek
@@ -688,7 +779,7 @@ router.get(
 
       // ---------- RESPONSE ----------
       res.json({
-        tasks,
+        tasks: tasksWithHours,
         stats: {
           totalTasks,
           completedTasks,
