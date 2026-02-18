@@ -16,7 +16,6 @@ export default function Login() {
   const [role, setRole] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [tenantCode, setTenantCode] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -26,27 +25,19 @@ export default function Login() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!email) {
       toast({
         title: "Error",
-        description: "Please enter email",
+        description: "Please enter your email",
         variant: "destructive",
       });
       return;
     }
-    else if(!password){
+    if (!password) {
       toast({
         title: "Error",
-        description: "Please enter password",
-        variant: "destructive",
-      });
-      return;
-    }
-    else if(!tenantCode){
-      toast({
-        title: "Error",
-        description: "Please enter tenant code",
+        description: "Please enter your password",
         variant: "destructive",
       });
       return;
@@ -60,7 +51,7 @@ export default function Login() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password, tenantCode }),
+        body: JSON.stringify({ email, password }),
         credentials: "include",
       });
 
@@ -83,13 +74,13 @@ export default function Login() {
       const loginTime = new Date();
 
       setUser({
-      id: data.userId,
-      email: data.email,
-      role: data.role.toLowerCase(),
-    });
-    setLoginTime(loginTime);
+        id: data.userId,
+        email: data.email,
+        role: data.role.toLowerCase(),
+      });
+      setLoginTime(loginTime);
 
-    
+
 
       // Redirect to dashboard
       navigate(`/${data.role.toLowerCase()}`);
@@ -114,7 +105,7 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <Card 
+        <Card
           className="shadow-2xl border-t-4 rounded-xl"
           style={{ borderTopColor: COLOR_PRIMARY }}
         >
@@ -163,18 +154,6 @@ export default function Login() {
                 </div>
               </div> */}
 
-              <div className="space-y-2">
-                <Label htmlFor="tenantCode" className="text-gray-700">Tenat Code</Label>
-                <Input
-                  id="tenantCode"
-                  type="text"
-                  placeholder="Enter Tenant Code"
-                  value={tenantCode}
-                  onChange={(e) => setTenantCode(e.target.value)}
-                  autoComplete="email"
-                  className="focus:border-[#0000cc] border-gray-30o"
-                />
-              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-gray-700">Email</Label>
@@ -202,18 +181,18 @@ export default function Login() {
                 />
               </div>
 
-              <Button 
-                type="submit" 
-                className="w-full h-11 gap-2 text-lg font-semibold shadow-md" 
+              <Button
+                type="submit"
+                className="w-full h-11 gap-2 text-lg font-semibold shadow-md"
                 style={{ backgroundColor: COLOR_PRIMARY }}
                 // Tailwind class for hover effect
-                size="lg" 
+                size="lg"
                 disabled={loading}
               >
                 {loading ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin text-red-500" /> Logging in...</>
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin text-red-500" /> Logging in...</>
                 ) : (
-                    <><LogIn className="h-5 w-5 text-red-500" /> Login</>
+                  <><LogIn className="h-5 w-5 text-red-500" /> Login</>
                 )}
               </Button>
 

@@ -160,7 +160,16 @@ const TaskTimelineView = ({ role }: { role: any }) => {
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: newStatus, updatedAt: new Date().toISOString() } : t));
     } catch (err: any) {
       if (err.response?.status === 409) {
-        toast({ title: "Conflict", description: "Please pause other tasks first.", variant: "destructive" });
+        const activeTitle = err.response.data?.activeTaskTitle;
+        toast({
+          title: "⚠️ Task Already In Progress",
+          description: activeTitle
+            ? `"${activeTitle}" is currently running. Please pause it before starting a new task.`
+            : "You already have a task in progress. Please pause it before starting a new one.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Error", description: "Failed to update task status.", variant: "destructive" });
       }
     }
   };
