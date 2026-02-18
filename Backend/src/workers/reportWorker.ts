@@ -198,7 +198,6 @@ const reportWorker = new Worker(
 // ----------------------------------
 // 🔴 ERROR HANDLERS (Email Notification)
 // ----------------------------------
-
 reportWorker.on('failed', async (job, err) => {
   console.error(`Status: FAILED for Job ${job?.id} in ${workerName}`);
   console.error(err);
