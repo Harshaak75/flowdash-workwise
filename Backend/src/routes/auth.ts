@@ -198,27 +198,35 @@ function replaceKeycloakHost(issuerUrl: string): string {
 
 router.post("/login", async (req, res) => {
   try {
-    const { email, password, tenantCode } = req.body;
+    const { email, password } = req.body;
 
-    if (!email || !password || !tenantCode) {
+    if (!email || !password) {
       return res.status(400).json({
-        error: "email, password and tenantCode are required",
+        error: "email and password are required",
       });
     }
 
     /* -------------------------------------------------
-       1️⃣ Get tenant Keycloak config from HRM
+       1️⃣ Auto-resolve tenant from email via HRM
+          (industry standard: email domain → tenant)
     --------------------------------------------------*/
-    const hrmRes = await axios.post(
-      `${process.env.HRM_BASE_URL}/internal/tenant/idp-config`,
-      { tenantCode },
-      {
-        headers: {
-          "x-internal-api-key": process.env.INTERNAL_API_KEY,
-        },
-      }
-    );
-
+    let hrmRes: any;
+    try {
+      hrmRes = await axios.post(
+        `${process.env.HRM_BASE_URL}/internal/tenant/idp-config-by-email`,
+        { email },
+        {
+          headers: {
+            "x-internal-api-key": process.env.INTERNAL_API_KEY,
+          },
+        }
+      );
+    } catch (hrmErr: any) {
+      console.error("HRM tenant lookup failed:", hrmErr?.response?.data || hrmErr.message);
+      return res.status(401).json({
+        error: "We could not find a workspace for this email address. Please check your email and try again.",
+      });
+    }
 
     let {
       issuerUrl,
@@ -226,6 +234,7 @@ router.post("/login", async (req, res) => {
       clientSecret,
       tokenUrl,
       tenantId,
+      personalEmail,  // real Gmail/personal email for notifications
     }: any = hrmRes.data;
 
     console.log("hrmRes.data", hrmRes.data);
@@ -280,15 +289,19 @@ router.post("/login", async (req, res) => {
 
     /* -------------------------------------------------
        4️⃣ Find or create User (tenant scoped)
+          Also sync personalEmail from HRM every login
+          so notifications always go to the real inbox.
     --------------------------------------------------*/
     let user: any = await prisma.user.findFirst({
       where: { email, tenantId },
     });
 
     if (!user) {
+      // First time this employee logs into FlowDash
       user = await prisma.user.create({
         data: {
           email,
+          personalEmail: personalEmail || null,
           password: "",
           role,
           tenantId,
@@ -305,6 +318,15 @@ router.post("/login", async (req, res) => {
           tenantId
         },
       });
+    } else {
+      // Returning user — sync personalEmail from HRM in case it changed
+      if (personalEmail && personalEmail !== user.personalEmail) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { personalEmail },
+        });
+        user.personalEmail = personalEmail;
+      }
     }
 
     /* -------------------------------------------------

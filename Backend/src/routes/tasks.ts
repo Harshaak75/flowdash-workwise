@@ -141,17 +141,18 @@ router.post(
       // send the email notification to the employee
       if (assigneeId) {
         try {
-          // 1️⃣ READ employee email (READ ONLY)
           const assigneeUser = await prisma.user.findUnique({
             where: { id: assigneeId },
-            select: { email: true },
+            select: { email: true, personalEmail: true },
           });
 
-          if (assigneeUser?.email) {
-            // 2️⃣ Send email
+          // 🔑 Use personalEmail (real inbox) — fallback to login email
+          const notificationEmail = assigneeUser?.personalEmail || assigneeUser?.email;
+
+          if (notificationEmail) {
             await transporter.sendMail({
               from: process.env.SMTP_FROM,
-              to: assigneeUser.email,
+              to: notificationEmail,
               subject: "New Task Assigned to You",
               html: taskAssignedTemplate({ title, priority, notes }),
             });
@@ -390,8 +391,30 @@ router.patch("/:taskId/status", auth, async (req, res) => {
     console.log("Status Change =>", newStatus);
 
     // ----------------------------------------
-    // 🚫 Restrict multiple WORKING tasks (TENANT SAFE)
+    // 🚫 ONE ACTIVE TASK AT A TIME
     // ----------------------------------------
+    if (newStatus === "WORKING") {
+      const alreadyWorkingTask = await prisma.task.findFirst({
+        where: {
+          assigneeId: userId,
+          tenantId,
+          status: "WORKING",
+          isDeleted: false,
+          NOT: { id: taskId },
+        },
+        select: { id: true, title: true },
+      });
+
+      if (alreadyWorkingTask) {
+        return res.status(409).json({
+          error: "TASK_ALREADY_WORKING",
+          message: `You already have a task in progress: "${alreadyWorkingTask.title}". Please pause that task before starting a new one.`,
+          activeTaskId: alreadyWorkingTask.id,
+          activeTaskTitle: alreadyWorkingTask.title,
+        });
+      }
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       if (newStatus === "WORKING") {
         await tx.taskWorkLog.updateMany({
@@ -441,20 +464,9 @@ router.patch("/:taskId/status", auth, async (req, res) => {
     });
 
 
-    // ----------------------------------------
-    // ✅ Update task (tenant-safe)
-    // ----------------------------------------
-    const updatedTask = await prisma.task.update({
-      where: { id: taskId },
-      data: {
-        status: newStatus as TaskStatus,
-        updatedAt: new Date(),
-      },
-    });
-
     res.json({
       message: "Status updated successfully",
-      task: updatedTask,
+      task: updated,
     });
 
   } catch (err) {
