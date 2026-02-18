@@ -74,8 +74,6 @@ export async function generateEmployeeReportPDF(
     const html = buildEmployeeReportHTML(report, snapshot, trendData);
 
     // 2️⃣ Render PDF
-    // 2️⃣ Render PDF
-    const tmpProfilePath = path.join(os.tmpdir(), `puppeteer_profile_${Date.now()}_${Math.random().toString(36).substring(7)}`);
     const tmpDir = os.tmpdir();
     const pdfPath = path.join(tmpDir, `${reportId}-${userId}.pdf`);
 
@@ -83,19 +81,25 @@ export async function generateEmployeeReportPDF(
     try {
         browser = await puppeteer.launch({
             headless: true,
-            userDataDir: tmpProfilePath, // Unique profile per request
-            timeout: 60000, // ✅ Increase timeout to 60 seconds
-            protocolTimeout: 60000, // ✅ Increase protocol timeout
+            timeout: 120000, // ✅ Increase to 120 seconds
+            protocolTimeout: 120000, // ✅ Increase protocol timeout to 120 seconds
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage", // Fixes some memory/crash issues
+                "--disable-dev-shm-usage",
                 "--disable-gpu",
                 "--disable-software-rasterizer",
                 "--disable-extensions",
                 "--no-first-run",
                 "--no-zygote",
-                "--single-process", // ✅ Important for Docker
+                "--single-process",
+                "--disable-background-networking",
+                "--disable-default-apps",
+                "--disable-sync",
+                "--metrics-recording-only",
+                "--mute-audio",
+                "--no-default-browser-check",
             ],
         });
         const page = await browser.newPage();
@@ -145,15 +149,6 @@ export async function generateEmployeeReportPDF(
             }
         } catch (err) {
             console.error("Failed to delete temp PDF:", err);
-        }
-
-        // Cleanup temp profile dir
-        try {
-            if (fs.existsSync(tmpProfilePath)) {
-                fs.rmSync(tmpProfilePath, { recursive: true, force: true });
-            }
-        } catch (cleanupErr) {
-            console.error("Failed to clean up temp profile:", cleanupErr);
         }
     }
 }
