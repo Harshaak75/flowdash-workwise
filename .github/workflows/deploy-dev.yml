@@ -1,0 +1,84 @@
+name: 🚀 Deploy to Dev (VPS)
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  deploy:
+    name: Build & Deploy Dev Stack
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📦 Trigger Deploy on VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_VPS_HOST }}
+          username: ${{ secrets.DEV_VPS_USER }}
+          key: ${{ secrets.DEV_VPS_SSH_KEY }}
+          port: 22
+          command_timeout: 30m
+          script: |
+            echo "======================================================"
+            echo "  🚀 Starting Dev Deployment - $(date)"
+            echo "======================================================"
+
+            # ── Pull latest develop code ──────────────────────────────
+            echo ""
+            echo "📥 Pulling latest code from develop branch..."
+
+            cd ~/projects/Backend
+            git fetch origin
+            git checkout develop
+            git pull origin develop
+            echo "✅ Backend code updated"
+
+            cd ~/projects/Frontend
+            git fetch origin
+            git checkout develop
+            git pull origin develop
+            echo "✅ Frontend code updated"
+
+            # ── Restart Backend + Worker + Redis ──────────────────────
+            echo ""
+            echo "🔄 Rebuilding backend containers..."
+
+            cd ~/projects
+            docker-compose -f docker-compose.dev.yml down --remove-orphans
+            docker-compose -f docker-compose.dev.yml up -d --build --force-recreate
+            echo "✅ Backend, Worker & Redis containers are up"
+
+            # ── Rebuild Frontend ──────────────────────────────────────
+            echo ""
+            echo "🔄 Rebuilding frontend container..."
+
+            docker stop flowdash-frontend-dev || true
+            docker rm flowdash-frontend-dev || true
+            docker rmi flowdash-frontend-dev || true
+
+            docker build \
+              -t flowdash-frontend-dev \
+              -f ~/projects/Frontend/Dockerfile.dev \
+              ~/projects/Frontend \
+              --no-cache
+
+            docker run -d \
+              -p 4003:80 \
+              --name flowdash-frontend-dev \
+              --network workwise-dev-network \
+              flowdash-frontend-dev
+
+            echo "✅ Frontend container is up"
+
+            # ── Final Status ──────────────────────────────────────────
+            echo ""
+            echo "======================================================"
+            echo "  ✅ Dev Deployment Complete - $(date)"
+            echo "======================================================"
+            echo ""
+            echo "🌐 Frontend : http://${{ secrets.DEV_VPS_HOST }}:4003"
+            echo "🔧 Backend  : http://${{ secrets.DEV_VPS_HOST }}:4002"
+            echo ""
+            echo "📋 Running containers:"
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
