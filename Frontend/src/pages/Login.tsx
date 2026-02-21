@@ -116,7 +116,7 @@ export default function Login() {
               </div>
             </div>
             <CardTitle className="text-2xl font-semibold" style={{ color: COLOR_PRIMARY }}>
-              Sign In to Your Account
+              Sign In to Your Accounts
             </CardTitle>
             {/* <CardDescription className="text-gray-500">
               Select your role to access the correct dashboard.
