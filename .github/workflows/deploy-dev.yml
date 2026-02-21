@@ -46,7 +46,8 @@ jobs:
 
             cd ~/projects
             docker-compose -p dotspeaksngo-dev -f docker-compose.dev.yml down
-            docker-compose -p dotspeaksngo-dev -f docker-compose.dev.yml up -d --build --force-recreate
+            docker-compose -p dotspeaksngo-dev -f docker-compose.dev.yml build --no-cache
+            docker-compose -p dotspeaksngo-dev -f docker-compose.dev.yml up -d --force-recreate
             echo "✅ Backend, Worker & Redis containers are up"
 
             # ── Rebuild Frontend ──────────────────────────────────────
