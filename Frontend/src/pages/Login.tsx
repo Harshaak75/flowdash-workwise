@@ -20,7 +20,6 @@ export default function Login() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { setUser, setLoginTime } = useAuth();
-
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
   const handleLogin = async (e: React.FormEvent) => {
