@@ -45,8 +45,8 @@ jobs:
             echo "🔄 Rebuilding backend containers..."
 
             cd ~/projects
-            docker-compose -f docker-compose.dev.yml down --remove-orphans
-            docker-compose -f docker-compose.dev.yml up -d --build --force-recreate
+            docker-compose -p dotspeaksngo-dev -f docker-compose.dev.yml down
+            docker-compose -p dotspeaksngo-dev -f docker-compose.dev.yml up -d --build --force-recreate
             echo "✅ Backend, Worker & Redis containers are up"
 
             # ── Rebuild Frontend ──────────────────────────────────────
