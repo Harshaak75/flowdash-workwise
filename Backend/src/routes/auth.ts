@@ -394,17 +394,19 @@ router.post("/login", async (req, res) => {
     /* -------------------------------------------------
        7️⃣ Set cookies + respond
     --------------------------------------------------*/
+    const isProduction = process.env.NODE_ENV === "production";
+
     res.cookie("keycloak_token", kc.access_token, {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
+      secure: isProduction,               // false in dev (HTTP), true in prod (HTTPS)
+      sameSite: isProduction ? "none" : "lax",  // 'none' requires secure:true
       maxAge: kc.expires_in * 1000,
     });
 
     res.cookie("keycloak_refresh_token", kc.refresh_token, {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
+      secure: isProduction,               // false in dev (HTTP), true in prod (HTTPS)
+      sameSite: isProduction ? "none" : "lax",  // 'none' requires secure:true
       maxAge: kc.refresh_expires_in * 1000,
     });
 
@@ -449,22 +451,24 @@ router.post("/logout", auth, async (req, res) => {
 
 
 
+    const isProduction = process.env.NODE_ENV === "production";
+
     //  Remove cookies
     res.clearCookie("keycloak_token", {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
     });
     res.clearCookie("keycloak_refresh_token", {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
     });
 
     res.clearCookie("token", {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
     });
 
     const today = getTodayDate();
